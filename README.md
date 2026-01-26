@@ -1,6 +1,6 @@
 # GECK
 
-A tool for generating macro-prompts, as well as a GitHub Repo framework, for use with Agentic CLI tools like Claude Code, Cursor, Aider, and other LLM-powered development assistants involved in multi-turn software engineering.
+A tool for generating macro-prompts, as well as a GitHub Repo framework, for use with Agentic CLI tools like Claude Code, Codex, Cursor, Antigravity, and other LLM-powered development assistants involved in software engineering sensitive to preservation of context across turns.
 
 ## Contents
 
