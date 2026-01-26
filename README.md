@@ -49,8 +49,8 @@ The GECK Generator is a tool that helps you create `LLM_init.md` files and initi
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/LLM_Macros.git
-   cd LLM_Macros
+   git clone https://github.com/yourusername/GECK.git
+   cd GECK
    ```
 
 2. Install dependencies:
@@ -70,8 +70,8 @@ The GECK Generator is a tool that helps you create `LLM_init.md` files and initi
 #### Option 2: Install via pip (Development Mode)
 
 ```bash
-git clone https://github.com/yourusername/LLM_Macros.git
-cd LLM_Macros
+git clone https://github.com/yourusername/GECK.git
+cd GECK
 pip install -e .
 ```
 
@@ -85,7 +85,7 @@ geck-generator --gui
 After cloning and installing dependencies, create shortcuts for easy access:
 
 ```bash
-cd LLM_Macros
+cd GECK
 
 # Create both desktop and start menu shortcuts
 python -m geck_generator --install-shortcut
