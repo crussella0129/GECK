@@ -1,6 +1,6 @@
-# LLM_Macros
+# GECK
 
-A collection of macro-prompts and generators for use with Agentic CLI tools like Claude Code, Cursor, Aider, and other LLM-powered development assistants.
+A tool for generating macro-prompts, as well as a GitHub Repo framework, for use with Agentic CLI tools like Claude Code, Cursor, Aider, and other LLM-powered development assistants involved in multi-turn software engineering.
 
 ## Contents
 
@@ -23,7 +23,7 @@ When working with CLI LLM agents (Claude Code, Aider, Cursor, etc.):
 
 ### How GECK Works
 
-GECK creates a simple folder structure in your project:
+GECK (v1.2) creates a simple folder structure in your project:
 
 ```
 your_project/
@@ -200,7 +200,7 @@ Read tasks.md and summarize what's done and what's remaining.
 Read the last log entry and remind me where we left off.
 ```
 
-### Tips for Best Results
+### Tips for Best Results with GECK Generator
 
 1. **Be specific in LLM_init.md** - Clear success criteria help the AI know when it's done
 
