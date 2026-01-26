@@ -1,0 +1,262 @@
+# GECK_Macro.md
+## Protocol Version: 1.0
+
+---
+
+### **Garden of Eden Creation Kit - Overall Structure**
+- LLM_init.md # Intital instructions, added to the repository before LLM_GECK is created. See LLM_init.md Template Below.
+- LLM_GECK (Folder)
+   - LLM_log.md # Append-only File containing a ledger with a timestamp of each action taken, a summary of understood goals, and a breif description of next steps. Acts as Long Term Memory for the Project. See LLM_Log.md Template Below. 
+   - LLM_ckls.md # Editable File that acts as a "current tasks" checklist (acts like RAM, compared to the Long Term Memory of LLM_log.md).
+   - LLM_dpmp.md # File that records any notable or otherwise unrecorded dependencies of any files or folders added throughout the project.
+   - LLM_env.md # File that records the Hw/Fw/Sw environment being developed on, as well as what environment the end product is expected to run on.
+
+
+## PHASE 0: INITIALIZATION (Run Once Per Project - Skip to "Phase 1" if LLM_GECK Folder Exists)
+
+### Step 0.0 — Create Repository on Github and Establish Local Directory
+
+- Human or LLM Agent Instructions:
+   - Ensure SSH Keys for Local System are shared with Github (One Time).
+   - Create GitHub Repo for project and record the URL.
+   - Create target directory for project and record path.
+   - Create LLM_init.md either in the Target Directory (and push to Git Repo), or directly in the GitHub Repo via a browser, according to the template attached at the end of this document.
+
+### Step 0.1 — Instruct Agent to Clone Repository and Read LLM_init.md
+```
+Clone the repo at [REPO_URL] to local directory [TARGET_DIR]. Read LLM_Init.md in full. Do not execute yet.
+```
+### Step 0.2 — LLM_GECK Folder Creation, GenSys "Memory Document" Creation, Environment Snapshot, and Consolidation of LLM_init.md
+- After cloning and reading LLM_Init.md, create the `LLM_GECK` Folder and create the following files within the folder:
+   - `LLM_log.md`
+      - Add Entry #0 to `LLM_log.md` in the format of the `LLM_log.md` template at the end of this document:
+         - Timestamp
+         - Summary: "Project initialized. Instructions parsed."
+         - Understood Goals: [bullet list of what you understood]
+         - Ambiguities/Questions: [anything unclear—ASK before assuming]
+         - Proposed Tasks: [what tasks will be added to `LLM_ckls.md` as the first tasks to handle]
+   - `LLM_ckls`
+      - Add the proposed tasks 
+  
+   - `LLM_env.md` with:
+      - Python version (`python --version`)
+      - Node version if applicable (`node --version`)
+      - OS and shell (`uname -a` or equivalent)
+      - Package manager state (`pip list` or `pip freeze > requirements_snapshot.txt`)
+      - Any `.env` variables that are non-secret (document their *existence*, not values)
+      - Desired system compatibility, by indicating what environments this application _should_ run on to consider when developing (Eg. Windows 11, MacOS, Arch, Fedora, Debian, iOS, etc...). *LLM will pull this instruction from LLM_Init.md*
+   
+
+### Step 0.3 — Create Initial Log and Checklist Entry
+- Add Entry #0 to `LLM_log.md` in the format of the `LLM_log.md` template at the end of this document:
+   - Timestamp
+   - Summary: "Project initialized. Instructions parsed."
+   - Understood Goals: [bullet list of what you understood]
+   - Ambiguities/Questions: [anything unclear—ASK before assuming]
+   - Proposed First Action: [what you plan to do in Phase 1]
+
+**STOP. Wait for human confirmation before proceeding.**
+
+---
+
+## PHASE 1: EXECUTION LOOP (Repeat Until Done)
+
+### Step 1.1 — Read Current State
+```
+Read the LAST 3 entries of LLM_Log.md and the SUCCESS CRITERIA section of LLM_Initial_Instructions.md
+```
+
+### Step 1.2 — Plan This Turn
+- Before writing ANY code:
+   1. State what you're about to do (1-2 short paragraphs)
+   2. State the dependencies of any files you plan to work on (after searching those dependencies) and explain how your changes will not create dependency errors. 
+   3. State what success looks like for THIS turn
+   4. State any assumptions you're making
+   
+
+### Step 1.3 — Execute
+Do the work. Do not Commit or Push yet.
+
+### Step 1.4 — Log Entry
+Add new entry to `LLM_Log.md`:
+```markdown
+---
+## Entry #[N] — [ISO Timestamp]
+
+### Actions Taken
+- [Bullet list of what you did]
+
+### Files Modified
+- `path/to/file.py` — [one-line description of change]
+
+### Findings
+- [Anything notable: bugs found, design decisions, surprises]
+
+### Issues/Blockers
+- [Problems encountered, with severity: MINOR | MAJOR | BLOCKER]
+
+### Checkpoint
+- [ ] Working state: YES / NO / PARTIAL
+- [ ] Tests passing: YES / NO / N/A
+- [ ] Safe to continue: YES / WAIT FOR HUMAN
+
+### Next Steps
+1. [Specific next action]
+2. [Contingency if #1 fails]
+
+### Questions for Human (if any)
+- [Decision points that need human input]
+```
+
+### Step 1.5 — Human Review Point
+If `Safe to continue: WAIT FOR HUMAN`, STOP and await input.
+Otherwise, return to Step 1.1.
+
+---
+
+## PHASE 2: COMPLETION
+
+When SUCCESS CRITERIA from `LLM_init.md` are met:
+
+1. Add final log entry with:
+   - Summary of all major changes
+   - Known limitations or technical debt
+   - Suggested future improvements
+
+2. Generate `CHANGELOG.md` entry if appropriate
+
+3. State: **"PROJECT GOALS ACHIEVED. Ready for human review."**
+
+---
+
+## ROLLBACK PROTOCOL
+
+If a turn causes regression:
+```
+Identify the last known-good Entry # from LLM_Log.md.
+State what broke and why.
+Propose rollback strategy (git revert, manual fix, etc.)
+Wait for human approval before reverting.
+```
+
+---
+
+## DECISION FORK PROTOCOL
+
+When facing a non-obvious choice (library selection, architecture pattern, etc.):
+1. Document the fork in log entry
+2. List options with pros/cons (max 3 options)
+3. State your recommendation with reasoning
+4. Mark `Safe to continue: WAIT FOR HUMAN`
+
+---
+
+## TEMPLATE: LLM_init.md
+```markdown
+# Project: [NAME]
+# Repo_URL: [URL]
+# Target_Dir: [Path}
+# Date Started: [DATE]
+
+## GOAL
+[As much detail as possible describing the end state]
+
+## SUCCESS CRITERIA
+- [ ] [Specific, testable criterion 1]
+- [ ] [Specific, testable criterion 2]
+- [ ] [Specific, testable criterion 3]
+
+## CONSTRAINTS + INTENDED ENVIRONMENT
+- Python version: [X.Y]
+- Must/Must Not use: [libraries, patterns]
+- Platform targets: [Linux/Windows/Both]
+
+## CONTEXT
+[Any background the LLM needs: why this exists, who it's for, related projects]
+
+## INITIAL TASK
+[The first concrete thing to do after reading this]
+```
+
+---
+## TEMPLATE: LLM_log.md
+```markdown
+# LLM Checklist — [Project Name]
+
+*Append Only - DO NOT edit existing entries. Post corrections in further entries if needed, referecing the affected entry number and section.
+*If `LLM_GECK` Folder AND `LLM_ckls.md` file exist, this is a subseqent turn and the next 'unstarted task' (dillineated with []) should be completed, unless a different task is specified.* 
+---
+
+## Entry #[Number] — Timestamp: [Date and Time]
+
+### Understood Scope and Goals
+- First Turn: Pull and summarize "### GOAL" from LLM_init.md in 1-2 paragraphs at most, but as concisely as possible. 
+- Every Subsequent Turn:  Observe the "### Understood Goals" from the previous LLM_log.md entry number as well as the instructions you received this turn and restate the newly understood scope and goals.
+   - Scope and Goals should remain *exactly the same* across turns unless explicit instructions were received that changed the Scope and Goals.
+   - Suggestions for improvements can be made later in the 
+
+### Checklist Snapshot (Complete at *Beginning of Turn*)
+- First Turn: "First Turn - No Assigned Tasks"
+- Every Subsequent Turn: Take a snapshot of the checklist in LLM_ckls.md (without the document headings) and copy it here at the *beginning* of the turn. 
+
+### Successful Actions Taken
+- First Turn: "LLM_init.md file read and project initialized"
+- Every Subsequent turn: List successfully completed tasks from the checklist (all of which would be listed in the checklist snapshot above) with a brief 1-2 sentance summary of what was done. These tasks would be given a  
+
+### Actions Delayed due to Dependency or Decision Making
+- First Turn: This space should be left blank as there are no delayed actions on the first turn. 
+- Every Subsequent Turn: List what actions were delayed due to a Dependency or a Design Decicision needing to be made. Add 
+
+### Failed Actions
+- First Turn: "First Turn - No Failed Tasks"
+- Every Subsequent Turn: 
+
+### New Checklist (Complete at *End of Turn*)
+- First Turn: The first tasks generated and added to the checklist. All should be incomplete.
+- Every Subsequent Turn: *AT THE END OF THE TURN*, read LLM_ckls.md and categorize each action taken according to the sections above (by using the [],[X], [DEP], [DSN], and [Failed] status indicators, which are updated as each task is operated on) and log accordingly in this entry of LLM_Log.md.
+   - The new checklist should have any tasks derived from a Dependency delay, any remaining design decisions that still need to be made or implemented, as well as "next steps" in the build process to accomplish the "### Understood Scope and Goals", combined into a new coherent checklist of tasks.
+
+### Suggested Improvements (DO NOT use to formulate LLM checklist tasks, only use to record suggestions)
+- First Turn and Every Subsequent Turn: Identify points of improvement and make suggestions. 
+```
+---
+## TEMPLATE: LLM_ckls.md
+```markdown
+# Project: [NAME]
+# Repo_URL: [URL]
+# Target_Dir: [Path]
+# Last Update: [Timestamp]
+# Instructions:
+   - At the *beginning* of each turn, take a snapshot of the checklist in LLM_ckls.md (without the document headings, Instructions, or Legend) and copy it to LLM_log.md -> "### Checklist Snapshot" .
+   - Then, execute the instructions.
+   - *AT THE END OF THE TURN*, read LLM_ckls.md and categorize each action taken according to the Legend Indications (listed below) and log accordingly in the current entry of LLM_Log.md. LLM_log will process this information and generate a "### New Checklist (Complete at *End of Turn*)" section
+   - The new checklist should have any tasks derived from a Dependency delay, any remaining design decisions that still need to be made or implemented, as well as "next steps" in the build process to accomplish the "### Understood Scope and Goals", combined into a new coherent checklist of tasks.  
+# *Legend*
+   - [] = Incomplete Task ,
+   - [X] = Successfully Completed Task ,
+   - [DEP] = Task delayed due to dependency (specify in LLM_Log.md and add dependent actions to "New Checklist"),
+   - [DSN] = Task delayed due to requiring clarification on qualitative design decision (Specify in LLM_log.md),
+   - [Failed] = Task Failed (specify in LLM_Log.md)
+
+## Current Tasks
+
+|[]| - Task 1
+|[]| - Task 2
+|[]| - Task 3
+|[]| - Task ...
+```
+---
+## TEMPLATE: LLM_ckls.md
+```markdown
+# Project: [NAME]
+# Repo_URL: [URL]
+# Target_Dir: [Path}
+# Date Started: [DATE]
+
+# *Legend* - [] = Incomplete Task , [X] = Successfully Completed Task , [DEP] = Task delayed due to dependency (specify in LLM_Log.md and add dependent actions to "New Checklist"), [DSN] = Task delayed due to requiring clarification on qualitative design decision (Specify in LLM_log.md), [Failed] = Task Failed (specify in LLM_Log.md) 
+
+|[]| - Task 1
+```
+---
+
+
