@@ -42,6 +42,7 @@ def _create_windows_shortcut(
     target: str,
     arguments: str,
     location: Path,
+    working_dir: Path,
     description: str = "",
     icon_path: str | None = None,
 ) -> Path:
@@ -55,7 +56,7 @@ $Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
 $Shortcut.TargetPath = "{target}"
 $Shortcut.Arguments = "{arguments}"
 $Shortcut.Description = "{description}"
-$Shortcut.WorkingDirectory = "{Path.home()}"
+$Shortcut.WorkingDirectory = "{working_dir}"
 '''
 
     if icon_path:
@@ -103,6 +104,9 @@ def create_windows_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
     if location in ("menu", "both"):
         locations_to_create.append(start_menu)
 
+    # Get the package's parent directory (where geck_generator folder is located)
+    package_parent = get_package_dir().parent
+
     for loc in locations_to_create:
         loc.mkdir(parents=True, exist_ok=True)
 
@@ -111,6 +115,7 @@ def create_windows_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
             target=python_exe,
             arguments="-m geck_generator --gui",
             location=loc,
+            working_dir=package_parent,
             description="Generate LLM_init.md files for GECK projects",
             icon_path=str(icon) if icon else None,
         )
@@ -130,6 +135,7 @@ Type=Application
 Name=GECK Generator
 Comment=Generate LLM_init.md files for GECK projects
 Exec={python_exe} -m geck_generator --gui
+Path={working_dir}
 Icon={icon_path}
 Terminal=false
 Categories=Development;Utility;
@@ -154,9 +160,13 @@ def create_linux_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
     # Use a default icon if none exists
     icon_path = str(icon) if icon else "utilities-terminal"
 
+    # Get the package's parent directory (where geck_generator folder is located)
+    package_parent = get_package_dir().parent
+
     desktop_entry = LINUX_DESKTOP_ENTRY.format(
         python_exe=python_exe,
         icon_path=icon_path,
+        working_dir=package_parent,
     )
 
     # Determine locations
@@ -200,7 +210,7 @@ def create_linux_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
 
 MACOS_APP_SCRIPT = """\
 #!/bin/bash
-cd "$HOME"
+cd "{working_dir}"
 "{python_exe}" -m geck_generator --gui
 """
 
@@ -244,6 +254,8 @@ def create_macos_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
     """
     created = []
     python_exe = get_python_executable()
+    # Get the package's parent directory (where geck_generator folder is located)
+    package_parent = get_package_dir().parent
 
     # Determine locations
     home = Path.home()
@@ -279,7 +291,7 @@ def create_macos_shortcuts(location: ShortcutLocation = "both") -> list[Path]:
         # Write launch script
         launch_script = macos / "launch.sh"
         launch_script.write_text(
-            MACOS_APP_SCRIPT.format(python_exe=python_exe),
+            MACOS_APP_SCRIPT.format(python_exe=python_exe, working_dir=package_parent),
             encoding="utf-8"
         )
         launch_script.chmod(launch_script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

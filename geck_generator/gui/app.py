@@ -490,6 +490,24 @@ def run_gui():
     """Run the GUI application."""
     root = tk.Tk()
     app = GECKGeneratorGUI(root)
+
+    # Ensure window appears on screen and is visible
+    root.update_idletasks()
+
+    # Center the window on screen
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    root.geometry(f"+{x}+{y}")
+
+    # Bring window to front
+    root.deiconify()
+    root.lift()
+    root.focus_force()
+
     root.mainloop()
 
 
