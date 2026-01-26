@@ -1,0 +1,9 @@
+# GECK Generator dependencies
+
+# Rich interactive CLI prompts
+questionary>=2.0.0
+
+# Template rendering
+jinja2>=3.0.0
+
+# Note: tkinter is included with Python standard library
