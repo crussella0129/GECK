@@ -209,7 +209,7 @@ When facing a non-obvious choice (library selection, architecture pattern, etc.)
 
 ### Failed Actions
 - First Turn: "First Turn - No Failed Tasks"
-- Every Subsequent Turn: 
+- Every Subsequent Turn: List Failed Tasks, with an explanation of why and add a fix to either "next steps" (if simple) or "Suggested Improvements" (if the failed task requires a significant amount of resources to fix or requires a re-build of some sort)
 
 ### New Checklist (Complete at *End of Turn*)
 - First Turn: The first tasks generated and added to the checklist. All should be incomplete.
