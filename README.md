@@ -49,7 +49,7 @@ The GECK Generator is a tool that helps you create `LLM_init.md` files and initi
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/GECK.git
+   git clone https://github.com/crussella0129/GECK.git
    cd GECK
    ```
 
