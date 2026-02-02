@@ -3,6 +3,61 @@
 from typing import Any
 
 
+# Exploration profiles for GECK Repor feature
+REPOR_PROFILES: dict[str, dict[str, Any]] = {
+    "feature_discovery": {
+        "name": "Feature Discovery",
+        "description": "Find reusable components and patterns",
+        "goals": [
+            "Identify reusable utility functions",
+            "Find well-documented APIs",
+            "Locate configurable components",
+            "Discover extensible patterns",
+        ],
+    },
+    "performance_optimization": {
+        "name": "Performance Optimization",
+        "description": "Identify performance patterns",
+        "goals": [
+            "Find caching implementations",
+            "Locate async/concurrent patterns",
+            "Identify optimization techniques",
+            "Discover efficient algorithms",
+        ],
+    },
+    "security_audit": {
+        "name": "Security Audit",
+        "description": "Look for security patterns and practices",
+        "goals": [
+            "Find authentication implementations",
+            "Locate input validation patterns",
+            "Identify secure configuration practices",
+            "Discover access control mechanisms",
+        ],
+    },
+    "testing_patterns": {
+        "name": "Testing Patterns",
+        "description": "Find testing strategies and coverage",
+        "goals": [
+            "Identify testing frameworks used",
+            "Find mock/stub patterns",
+            "Locate integration test setups",
+            "Discover test organization patterns",
+        ],
+    },
+    "architecture_review": {
+        "name": "Architecture Review",
+        "description": "Analyze code organization",
+        "goals": [
+            "Identify architectural patterns (MVC, etc.)",
+            "Find module organization patterns",
+            "Locate dependency injection usage",
+            "Discover error handling strategies",
+        ],
+    },
+}
+
+
 # Preset profiles for common project types
 PROFILES: dict[str, dict[str, Any]] = {
     "web_app": {
@@ -117,6 +172,74 @@ PROFILES: dict[str, dict[str, Any]] = {
         "suggested_must_use": "Health check endpoints, structured logging, environment variables for config",
         "suggested_must_avoid": "Storing state locally, hardcoded service URLs",
     },
+    "game": {
+        "name": "Game Development",
+        "description": "Video game or interactive entertainment project",
+        "languages": "Python, C#, C++, GDScript, Lua",
+        "frameworks": ["Pygame", "Godot", "Unity", "Unreal Engine", "Phaser", "LÖVE"],
+        "platforms": ["Windows", "macOS", "Linux", "Web", "iOS", "Android"],
+        "suggested_criteria": [
+            "Game launches without errors",
+            "Core gameplay loop functions correctly",
+            "Player input is responsive and accurate",
+            "Game state saves and loads correctly",
+            "Performance meets target frame rate",
+            "Audio plays correctly and synchronizes with visuals",
+        ],
+        "suggested_must_use": "Delta time for frame-independent movement, asset management, input abstraction layer",
+        "suggested_must_avoid": "Frame-rate dependent physics, blocking operations in game loop, memory leaks in asset loading",
+    },
+    "os_development": {
+        "name": "OS / Systems Development",
+        "description": "Operating system, kernel, driver, or low-level systems programming",
+        "languages": "C, C++, Rust, Assembly",
+        "frameworks": ["UEFI", "GRUB", "Limine", "seL4", "Zephyr RTOS"],
+        "platforms": ["Linux", "Windows", "macOS", "Custom/Bare Metal"],
+        "suggested_criteria": [
+            "Kernel boots successfully on target hardware/emulator",
+            "Memory management operates correctly without leaks",
+            "Interrupt handlers respond within timing requirements",
+            "System calls function correctly",
+            "Hardware drivers initialize and operate properly",
+            "System remains stable under load",
+        ],
+        "suggested_must_use": "Memory-safe patterns, proper synchronization primitives, hardware abstraction layers",
+        "suggested_must_avoid": "Undefined behavior, unhandled interrupts, unbounded loops in kernel space, memory corruption",
+    },
+    "blockchain": {
+        "name": "Blockchain / DeFi",
+        "description": "Cryptocurrency, smart contracts, or decentralized application development",
+        "languages": "Solidity, Rust, Python, TypeScript, Move",
+        "frameworks": ["Hardhat", "Foundry", "Anchor", "ethers.js", "web3.py", "OpenZeppelin"],
+        "platforms": ["Ethereum", "Solana", "Polygon", "Arbitrum", "Linux", "Docker"],
+        "suggested_criteria": [
+            "Smart contracts compile without errors",
+            "All contract tests pass",
+            "No reentrancy vulnerabilities detected",
+            "Gas optimization meets targets",
+            "Contract upgrades work correctly",
+            "Integration with wallets functions properly",
+        ],
+        "suggested_must_use": "Audited libraries (OpenZeppelin), comprehensive test coverage, formal verification where possible",
+        "suggested_must_avoid": "Reentrancy patterns, unchecked external calls, floating pragma versions, storing sensitive data on-chain",
+    },
+    "embedded": {
+        "name": "Embedded / Maker",
+        "description": "Arduino, Raspberry Pi, Jetson, ESP32, or other dev board projects",
+        "languages": "C, C++, Python, MicroPython, CircuitPython, Rust",
+        "frameworks": ["Arduino", "PlatformIO", "ESP-IDF", "Raspberry Pi OS", "NVIDIA JetPack", "Zephyr"],
+        "platforms": ["Arduino", "Raspberry Pi", "NVIDIA Jetson", "ESP32", "STM32", "Linux"],
+        "suggested_criteria": [
+            "Firmware compiles and uploads successfully",
+            "Hardware peripherals initialize correctly",
+            "Sensor readings are accurate within tolerance",
+            "Communication protocols work reliably",
+            "Power consumption meets requirements",
+            "System recovers gracefully from errors",
+        ],
+        "suggested_must_use": "Watchdog timers, proper pin initialization, interrupt-safe code, hardware abstraction",
+        "suggested_must_avoid": "Blocking delays in critical loops, floating inputs, unbounded memory allocation, ignoring hardware errata",
+    },
 }
 
 
@@ -230,3 +353,64 @@ class ProfileManager:
         """
         profile = self.get_profile(profile_name)
         return profile.get("frameworks", [])
+
+
+class ReporProfileManager:
+    """Manager for GECK Repor exploration profiles."""
+
+    def __init__(self):
+        """Initialize with built-in exploration profiles."""
+        self._profiles = REPOR_PROFILES.copy()
+
+    def get_profile(self, name: str) -> dict[str, Any]:
+        """
+        Get an exploration profile by name.
+
+        Args:
+            name: Profile name (e.g., 'feature_discovery')
+
+        Returns:
+            Profile dictionary
+
+        Raises:
+            KeyError: If profile doesn't exist
+        """
+        if name in self._profiles:
+            return self._profiles[name]
+        raise KeyError(f"Repor profile '{name}' not found. Available: {self.list_profiles()}")
+
+    def list_profiles(self) -> list[str]:
+        """
+        List all available exploration profile names.
+
+        Returns:
+            List of profile names
+        """
+        return list(self._profiles.keys())
+
+    def get_profile_choices(self) -> list[tuple[str, str, str]]:
+        """
+        Get profile choices for dropdown.
+
+        Returns:
+            List of tuples: (key, display_name, description)
+        """
+        result = [("none", "Custom / No Profile", "Enter your own exploration goals")]
+        for key, profile in self._profiles.items():
+            result.append((key, profile["name"], profile.get("description", "")))
+        return result
+
+    def get_goals_for_profile(self, profile_name: str) -> list[str]:
+        """
+        Get the exploration goals for a profile.
+
+        Args:
+            profile_name: Name of the profile
+
+        Returns:
+            List of goal strings
+        """
+        if profile_name == "none" or not profile_name:
+            return []
+        profile = self.get_profile(profile_name)
+        return profile.get("goals", [])

@@ -296,9 +296,11 @@ def run_cli_and_save(init_geck: bool = False) -> Path | None:
             return None
 
         result_path = generator.init_geck_folder(output_path, config)
-        print(f"\n✅ Created GECK folder: {result_path}")
-        print("   Files created:")
-        for f in result_path.iterdir():
+        project_path = Path(output_path)
+        print(f"\n✅ Created GECK structure:")
+        print(f"   - {project_path / 'LLM_init.md'}")
+        print(f"   - {result_path}/")
+        for f in sorted(result_path.iterdir()):
             print(f"     - {f.name}")
         return result_path
     else:

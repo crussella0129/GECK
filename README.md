@@ -27,8 +27,8 @@ GECK (v1.2) creates a simple folder structure in your project:
 
 ```
 your_project/
-├── LLM_init.md          # Your project goals and constraints
-└── LLM_GECK/
+└── GECK/
+    ├── LLM_init.md      # Your project goals and constraints
     ├── GECK_Inst.md     # Instructions for the AI agent
     ├── log.md           # Session history (long-term memory)
     ├── tasks.md         # Current task list (working memory)
@@ -159,7 +159,7 @@ python -m geck_generator --profile web_app --project-name "My App" --goal "Build
    Read LLM_init.md and initialize the GECK.
    ```
 
-4. The AI will create the `LLM_GECK/` folder with all necessary files and summarize its understanding of your project.
+4. The AI will create the `GECK/` folder with all necessary files and summarize its understanding of your project.
 
 ### Daily Workflow
 
@@ -210,7 +210,7 @@ Read the last log entry and remind me where we left off.
 
 4. **Trust the checkpoints** - When the AI says WAIT, it genuinely needs your input. Don't skip these.
 
-5. **Commit the GECK folder** - Keep `LLM_GECK/` in version control so the history is preserved
+5. **Commit the GECK folder** - Keep `GECK/` in version control so the history is preserved
 
 ---
 

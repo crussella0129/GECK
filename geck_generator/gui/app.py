@@ -4,9 +4,32 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 from pathlib import Path
 from typing import Any
+import sys
 
 from geck_generator.core.generator import GECKGenerator
-from geck_generator.core.profiles import ProfileManager
+from geck_generator.core.profiles import ProfileManager, ReporProfileManager
+
+
+def get_icon_path() -> Path | None:
+    """Get the path to the application icon."""
+    # Try relative to this module first
+    module_dir = Path(__file__).parent.parent
+    icon_path = module_dir / "resources" / "geck_icon.ico"
+    if icon_path.exists():
+        return icon_path
+
+    # Try relative to package installation
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        base_path = Path(sys.executable).parent
+    else:
+        base_path = Path(__file__).parent.parent
+
+    icon_path = base_path / "resources" / "geck_icon.ico"
+    if icon_path.exists():
+        return icon_path
+
+    return None
 
 
 class GECKGeneratorGUI:
@@ -21,8 +44,9 @@ class GECKGeneratorGUI:
 
         self.generator = GECKGenerator()
         self.profiles = ProfileManager()
+        self.repor_profiles = ReporProfileManager()
 
-        # Variables
+        # Variables for Bootstrapper
         self.project_name_var = tk.StringVar()
         self.repo_url_var = tk.StringVar()
         self.local_path_var = tk.StringVar(value=str(Path.cwd()))
@@ -33,6 +57,17 @@ class GECKGeneratorGUI:
         self.criteria_list: list[str] = []
         self.platforms_vars: dict[str, tk.BooleanVar] = {}
 
+        # Variables for Repor
+        self.repor_working_dir_var = tk.StringVar(value=str(Path.cwd()))
+        self.repor_repos_list: list[str] = []
+        self.repor_goals_list: list[str] = []
+        self.repor_profile_var = tk.StringVar(value="none")
+
+        # Frame references
+        self.main_menu_frame: ttk.Frame | None = None
+        self.bootstrapper_frame: ttk.Frame | None = None
+        self.repor_frame: ttk.Frame | None = None
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -40,9 +75,113 @@ class GECKGeneratorGUI:
         # Create menu bar
         self.setup_menu()
 
-        # Create notebook (tabs)
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Create main container
+        self.main_container = ttk.Frame(self.root)
+        self.main_container.pack(fill=tk.BOTH, expand=True)
+
+        # Create all frames (initially hidden)
+        self.setup_main_menu()
+        self.setup_bootstrapper_ui()
+        self.setup_repor_ui()
+
+        # Show main menu initially
+        self.show_main_menu()
+
+    def setup_menu(self):
+        """Set up the menu bar."""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Main Menu", command=self.show_main_menu)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+
+        # Tools menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Create Desktop Shortcut", command=self.create_desktop_shortcut)
+        tools_menu.add_command(label="Create Start Menu Shortcut", command=self.create_menu_shortcut)
+        tools_menu.add_command(label="Create Both Shortcuts", command=self.create_both_shortcuts)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Remove All Shortcuts", command=self.remove_shortcuts)
+
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About", command=self.show_about)
+
+    def setup_main_menu(self):
+        """Set up the main menu / welcome screen."""
+        self.main_menu_frame = ttk.Frame(self.main_container, padding=40)
+
+        # Title
+        title_label = ttk.Label(
+            self.main_menu_frame,
+            text="GECK Generator",
+            font=("Segoe UI", 24, "bold")
+        )
+        title_label.pack(pady=(0, 40))
+
+        # Buttons container
+        buttons_frame = ttk.Frame(self.main_menu_frame)
+        buttons_frame.pack(fill=tk.BOTH, expand=True)
+
+        # GECK Bootstrapper button
+        bootstrapper_frame = ttk.LabelFrame(
+            buttons_frame,
+            text="GECK Bootstrapper",
+            padding=20
+        )
+        bootstrapper_frame.pack(fill=tk.X, pady=10)
+
+        ttk.Label(
+            bootstrapper_frame,
+            text="Create LLM_init.md and GECK folder for new projects",
+            font=("Segoe UI", 10)
+        ).pack(pady=(0, 10))
+
+        ttk.Button(
+            bootstrapper_frame,
+            text="Open Bootstrapper",
+            command=self.show_bootstrapper,
+            width=25
+        ).pack()
+
+        # GECK Repor button
+        repor_frame = ttk.LabelFrame(
+            buttons_frame,
+            text="GECK Repor",
+            padding=20
+        )
+        repor_frame.pack(fill=tk.X, pady=10)
+
+        ttk.Label(
+            repor_frame,
+            text="Explore external repos to find improvements",
+            font=("Segoe UI", 10)
+        ).pack(pady=(0, 10))
+
+        ttk.Button(
+            repor_frame,
+            text="Open Repor",
+            command=self.show_repor,
+            width=25
+        ).pack()
+
+    def setup_bootstrapper_ui(self):
+        """Set up the Bootstrapper interface."""
+        self.bootstrapper_frame = ttk.Frame(self.main_container)
+
+        # Bottom button bar - pack FIRST with side=BOTTOM so it's always visible
+        self.button_frame = ttk.Frame(self.bootstrapper_frame)
+        self.button_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+
+        # Create notebook (tabs) - pack after button frame so it fills remaining space
+        self.notebook = ttk.Notebook(self.bootstrapper_frame)
+        self.notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # Tab 1: Basic Info
         self.basic_frame = ttk.Frame(self.notebook, padding=10)
@@ -64,47 +203,193 @@ class GECKGeneratorGUI:
         self.notebook.add(self.preview_frame, text="Preview & Generate")
         self.setup_preview_tab()
 
-        # Bottom button bar
-        self.button_frame = ttk.Frame(self.root)
-        self.button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
         ttk.Button(
             self.button_frame, text="Preview", command=self.update_preview
         ).pack(side=tk.LEFT, padx=5)
         ttk.Button(
-            self.button_frame, text="Save LLM_init.md", command=self.save_file
+            self.button_frame, text="Bootstrap GECK Project", command=self.bootstrap_geck_project
         ).pack(side=tk.LEFT, padx=5)
         ttk.Button(
-            self.button_frame, text="Create GECK Folder", command=self.create_geck_folder
+            self.button_frame, text="Back to Main Menu", command=self.show_main_menu
+        ).pack(side=tk.RIGHT, padx=5)
+
+    def setup_repor_ui(self):
+        """Set up the Repor interface."""
+        self.repor_frame = ttk.Frame(self.main_container)
+
+        # Create scrollable canvas
+        canvas = tk.Canvas(self.repor_frame)
+        scrollbar = ttk.Scrollbar(self.repor_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, padding=10)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Bind mousewheel
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # Section 1: Working Directory
+        wd_frame = ttk.LabelFrame(scrollable_frame, text="Working Directory", padding=10)
+        wd_frame.pack(fill=tk.X, pady=5)
+
+        wd_entry_frame = ttk.Frame(wd_frame)
+        wd_entry_frame.pack(fill=tk.X)
+
+        ttk.Entry(wd_entry_frame, textvariable=self.repor_working_dir_var, width=60).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+        ttk.Button(wd_entry_frame, text="Browse...", command=self.browse_repor_working_dir).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
+
+        # Section 2: Git Repositories
+        repos_frame = ttk.LabelFrame(scrollable_frame, text="Git Repositories to Explore", padding=10)
+        repos_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Repos listbox
+        repos_list_frame = ttk.Frame(repos_frame)
+        repos_list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.repor_repos_listbox = tk.Listbox(repos_list_frame, height=6)
+        self.repor_repos_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        repos_scrollbar = ttk.Scrollbar(repos_list_frame, orient=tk.VERTICAL)
+        repos_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.repor_repos_listbox.config(yscrollcommand=repos_scrollbar.set)
+        repos_scrollbar.config(command=self.repor_repos_listbox.yview)
+
+        # Add/Remove repos
+        repos_btn_frame = ttk.Frame(repos_frame)
+        repos_btn_frame.pack(fill=tk.X, pady=5)
+
+        self.new_repo_var = tk.StringVar()
+        ttk.Entry(repos_btn_frame, textvariable=self.new_repo_var, width=50).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+        ttk.Button(repos_btn_frame, text="Add", command=self.add_repor_repo).pack(
+            side=tk.LEFT, padx=5
+        )
+        ttk.Button(repos_btn_frame, text="Remove", command=self.remove_repor_repo).pack(
+            side=tk.LEFT
+        )
+
+        ttk.Label(repos_frame, text="Accepts GitHub, GitLab, or .git URLs", foreground="gray").pack(
+            anchor=tk.W
+        )
+
+        # Section 3: Additional Goals
+        goals_frame = ttk.LabelFrame(scrollable_frame, text="Additional Exploration Goals (Optional)", padding=10)
+        goals_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Goals listbox
+        goals_list_frame = ttk.Frame(goals_frame)
+        goals_list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.repor_goals_listbox = tk.Listbox(goals_list_frame, height=6)
+        self.repor_goals_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        goals_scrollbar = ttk.Scrollbar(goals_list_frame, orient=tk.VERTICAL)
+        goals_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.repor_goals_listbox.config(yscrollcommand=goals_scrollbar.set)
+        goals_scrollbar.config(command=self.repor_goals_listbox.yview)
+
+        # Add/Remove goals
+        goals_btn_frame = ttk.Frame(goals_frame)
+        goals_btn_frame.pack(fill=tk.X, pady=5)
+
+        self.new_repor_goal_var = tk.StringVar()
+        ttk.Entry(goals_btn_frame, textvariable=self.new_repor_goal_var, width=50).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+        ttk.Button(goals_btn_frame, text="Add", command=self.add_repor_goal).pack(
+            side=tk.LEFT, padx=5
+        )
+        ttk.Button(goals_btn_frame, text="Remove", command=self.remove_repor_goal).pack(
+            side=tk.LEFT
+        )
+
+        ttk.Label(goals_frame, text="Specific instructions for what to look for", foreground="gray").pack(
+            anchor=tk.W
+        )
+
+        # Section 4: Exploration Profile
+        profile_frame = ttk.LabelFrame(scrollable_frame, text="Exploration Profile", padding=10)
+        profile_frame.pack(fill=tk.X, pady=5)
+
+        # Build profile choices
+        profile_choices = self.repor_profiles.get_profile_choices()
+        profile_values = [f"{name}" for _, name, _ in profile_choices]
+
+        ttk.Label(profile_frame, text="Select Profile:").pack(anchor=tk.W)
+        self.repor_profile_combo = ttk.Combobox(
+            profile_frame,
+            values=profile_values,
+            state="readonly",
+            width=40
+        )
+        self.repor_profile_combo.current(0)
+        self.repor_profile_combo.pack(anchor=tk.W, pady=5)
+        self.repor_profile_combo.bind("<<ComboboxSelected>>", self.on_repor_profile_change)
+
+        # Store mapping of display name to key
+        self._repor_profile_map = {name: key for key, name, _ in profile_choices}
+
+        # Bottom button bar
+        repor_button_frame = ttk.Frame(scrollable_frame)
+        repor_button_frame.pack(fill=tk.X, pady=20)
+
+        ttk.Button(
+            repor_button_frame,
+            text="Create GECK Repor Agent Instructions",
+            command=self.create_repor_instructions
         ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            repor_button_frame,
+            text="Back to Main Menu",
+            command=self.show_main_menu
+        ).pack(side=tk.RIGHT, padx=5)
 
-    def setup_menu(self):
-        """Set up the menu bar."""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
+    # Navigation methods
+    def show_main_menu(self):
+        """Show the main menu screen."""
+        if self.bootstrapper_frame:
+            self.bootstrapper_frame.pack_forget()
+        if self.repor_frame:
+            self.repor_frame.pack_forget()
+        if self.main_menu_frame:
+            self.main_menu_frame.pack(fill=tk.BOTH, expand=True)
 
-        # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Save LLM_init.md...", command=self.save_file)
-        file_menu.add_command(label="Create GECK Folder...", command=self.create_geck_folder)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.root.quit)
+    def show_bootstrapper(self):
+        """Show the Bootstrapper interface."""
+        if self.main_menu_frame:
+            self.main_menu_frame.pack_forget()
+        if self.repor_frame:
+            self.repor_frame.pack_forget()
+        if self.bootstrapper_frame:
+            self.bootstrapper_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Tools menu
-        tools_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Tools", menu=tools_menu)
-        tools_menu.add_command(label="Create Desktop Shortcut", command=self.create_desktop_shortcut)
-        tools_menu.add_command(label="Create Start Menu Shortcut", command=self.create_menu_shortcut)
-        tools_menu.add_command(label="Create Both Shortcuts", command=self.create_both_shortcuts)
-        tools_menu.add_separator()
-        tools_menu.add_command(label="Remove All Shortcuts", command=self.remove_shortcuts)
+    def show_repor(self):
+        """Show the Repor interface."""
+        if self.main_menu_frame:
+            self.main_menu_frame.pack_forget()
+        if self.bootstrapper_frame:
+            self.bootstrapper_frame.pack_forget()
+        if self.repor_frame:
+            self.repor_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Help menu
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
-
+    # Shortcut methods
     def create_desktop_shortcut(self):
         """Create a desktop shortcut."""
         self._create_shortcut("desktop")
@@ -156,13 +441,14 @@ class GECKGeneratorGUI:
             "About GECK Generator",
             f"GECK Generator v{__version__}\n\n"
             "Generate LLM_init.md files for GECK v1.2 projects.\n\n"
-            "Supports:\n"
+            "Features:\n"
+            "  - GECK Bootstrapper: Create project structures\n"
+            "  - GECK Repor: Explore external repos\n"
             "  - Interactive CLI\n"
-            "  - GUI Application\n"
-            "  - Template Substitution\n"
             "  - Preset Profiles"
         )
 
+    # Bootstrapper tab setup methods
     def setup_basic_tab(self):
         """Set up the Basic Info tab."""
         # Project Name
@@ -288,12 +574,21 @@ class GECKGeneratorGUI:
         self.context_text.pack(fill=tk.X, expand=True, pady=5)
 
         # Initial Task
-        task_frame = ttk.LabelFrame(self.goals_frame, text="Initial Task", padding=10)
+        task_frame = ttk.LabelFrame(self.goals_frame, text="Initial Task (Optional)", padding=10)
         task_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Label(task_frame, text="What is the first task to work on?").pack(anchor=tk.W)
+        ttk.Label(task_frame, text="Additional first task to work on:").pack(anchor=tk.W)
         self.initial_task_text = scrolledtext.ScrolledText(task_frame, height=2, wrap=tk.WORD)
         self.initial_task_text.pack(fill=tk.X, expand=True, pady=5)
+
+        # Info about default task
+        default_task_info = ttk.Label(
+            task_frame,
+            text='Note: "Compile task list from log and LLM_init entries" is always included as the first task.',
+            foreground="gray",
+            wraplength=500,
+        )
+        default_task_info.pack(anchor=tk.W, pady=(5, 0))
 
         # Success Criteria
         criteria_frame = ttk.LabelFrame(
@@ -341,6 +636,7 @@ class GECKGeneratorGUI:
             self.preview_frame, text="Refresh Preview", command=self.update_preview
         ).pack(pady=5)
 
+    # Bootstrapper action methods
     def browse_path(self):
         """Open file dialog to browse for a directory."""
         path = filedialog.askdirectory(initialdir=self.local_path_var.get())
@@ -428,67 +724,170 @@ class GECKGeneratorGUI:
         # Switch to preview tab
         self.notebook.select(3)
 
-    def save_file(self):
-        """Save the generated content to a file."""
+    def bootstrap_geck_project(self):
+        """Create full GECK project structure in the specified local path."""
         config = self.collect_form_data()
 
-        # Validate
+        # Validate config
         errors = self.generator.validate_config(config)
         if errors:
             messagebox.showerror("Validation Error", "\n".join(errors))
             return
 
+        # Validate local path
+        local_path = config.get("local_path", "").strip()
+        if not local_path:
+            messagebox.showerror("Validation Error", "Local Path is required.")
+            return
+
+        dirpath = Path(local_path)
+        if not dirpath.exists():
+            messagebox.showerror("Validation Error", f"Local Path does not exist:\n{dirpath}")
+            return
+
+        if not dirpath.is_dir():
+            messagebox.showerror("Validation Error", f"Local Path is not a directory:\n{dirpath}")
+            return
+
+        try:
+            geck_path = self.generator.init_geck_folder(dirpath, config)
+            files = sorted([f.name for f in geck_path.iterdir()])
+            messagebox.showinfo(
+                "Success",
+                f"GECK project bootstrapped successfully!\n\n"
+                f"Created: {geck_path}/\n"
+                + "\n".join(f"  - {f}" for f in files)
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to bootstrap GECK project:\n{e}")
+
+    # Repor action methods
+    def browse_repor_working_dir(self):
+        """Open file dialog to browse for Repor working directory."""
+        path = filedialog.askdirectory(initialdir=self.repor_working_dir_var.get())
+        if path:
+            self.repor_working_dir_var.set(path)
+
+    def add_repor_repo(self):
+        """Add a repository URL to the Repor list."""
+        repo = self.new_repo_var.get().strip()
+        if repo:
+            self.repor_repos_list.append(repo)
+            self.update_repor_repos_listbox()
+            self.new_repo_var.set("")
+
+    def remove_repor_repo(self):
+        """Remove the selected repository from the Repor list."""
+        selection = self.repor_repos_listbox.curselection()
+        if selection:
+            index = selection[0]
+            del self.repor_repos_list[index]
+            self.update_repor_repos_listbox()
+
+    def update_repor_repos_listbox(self):
+        """Update the Repor repos listbox display."""
+        self.repor_repos_listbox.delete(0, tk.END)
+        for repo in self.repor_repos_list:
+            self.repor_repos_listbox.insert(tk.END, repo)
+
+    def add_repor_goal(self):
+        """Add a goal to the Repor goals list."""
+        goal = self.new_repor_goal_var.get().strip()
+        if goal:
+            self.repor_goals_list.append(goal)
+            self.update_repor_goals_listbox()
+            self.new_repor_goal_var.set("")
+
+    def remove_repor_goal(self):
+        """Remove the selected goal from the Repor goals list."""
+        selection = self.repor_goals_listbox.curselection()
+        if selection:
+            index = selection[0]
+            del self.repor_goals_list[index]
+            self.update_repor_goals_listbox()
+
+    def update_repor_goals_listbox(self):
+        """Update the Repor goals listbox display."""
+        self.repor_goals_listbox.delete(0, tk.END)
+        for goal in self.repor_goals_list:
+            self.repor_goals_listbox.insert(tk.END, goal)
+
+    def on_repor_profile_change(self, event=None):
+        """Handle Repor profile selection change."""
+        # Profile change is handled at generation time
+        pass
+
+    def get_repor_profile_key(self) -> str:
+        """Get the selected Repor profile key."""
+        display_name = self.repor_profile_combo.get()
+        return self._repor_profile_map.get(display_name, "none")
+
+    def create_repor_instructions(self):
+        """Create GECK Repor agent instructions file."""
+        working_dir = self.repor_working_dir_var.get().strip()
+
+        # Validate
+        if not working_dir:
+            messagebox.showerror("Validation Error", "Working directory is required.")
+            return
+
+        if not Path(working_dir).exists():
+            messagebox.showerror("Validation Error", f"Working directory does not exist:\n{working_dir}")
+            return
+
+        if not self.repor_repos_list:
+            messagebox.showerror("Validation Error", "At least one repository URL is required.")
+            return
+
         # Ask for save location
-        default_path = Path(config.get("local_path", ".")) / "LLM_init.md"
+        default_filename = "GECK_Repor_Instructions.md"
         filepath = filedialog.asksaveasfilename(
             defaultextension=".md",
             filetypes=[("Markdown files", "*.md"), ("All files", "*.*")],
-            initialfile="LLM_init.md",
-            initialdir=str(default_path.parent),
+            initialfile=default_filename,
+            initialdir=working_dir,
         )
 
         if not filepath:
             return
 
         try:
-            self.generator.generate_to_file(config, filepath)
-            messagebox.showinfo("Success", f"File saved to:\n{filepath}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save file:\n{e}")
-
-    def create_geck_folder(self):
-        """Create a full GECK folder structure."""
-        config = self.collect_form_data()
-
-        # Validate
-        errors = self.generator.validate_config(config)
-        if errors:
-            messagebox.showerror("Validation Error", "\n".join(errors))
-            return
-
-        # Ask for directory
-        dirpath = filedialog.askdirectory(
-            title="Select directory to create GECK folder in",
-            initialdir=config.get("local_path", "."),
-        )
-
-        if not dirpath:
-            return
-
-        try:
-            geck_path = self.generator.init_geck_folder(dirpath, config)
-            files = [f.name for f in geck_path.iterdir()]
+            profile_key = self.get_repor_profile_key()
+            content = self.generator.generate_repor_instructions(
+                working_directory=working_dir,
+                repositories=self.repor_repos_list,
+                exploration_goals=self.repor_goals_list,
+                profile_name=profile_key,
+                output_path=filepath,
+            )
             messagebox.showinfo(
                 "Success",
-                f"GECK folder created at:\n{geck_path}\n\nFiles created:\n" + "\n".join(f"  - {f}" for f in files)
+                f"GECK Repor instructions created:\n{filepath}"
             )
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to create GECK folder:\n{e}")
+            messagebox.showerror("Error", f"Failed to create Repor instructions:\n{e}")
 
 
 def run_gui():
     """Run the GUI application."""
+    # Set AppUserModelID on Windows so taskbar shows our icon instead of Python's
+    try:
+        import ctypes
+        app_id = "geck.generator.gui.1.0"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except (ImportError, AttributeError, OSError):
+        pass  # Not on Windows or failed, continue anyway
+
     root = tk.Tk()
+
+    # Set application icon
+    icon_path = get_icon_path()
+    if icon_path:
+        try:
+            root.iconbitmap(str(icon_path))
+        except tk.TclError:
+            pass  # Icon loading failed, continue without it
+
     app = GECKGeneratorGUI(root)
 
     # Ensure window appears on screen and is visible

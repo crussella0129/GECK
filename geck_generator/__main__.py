@@ -69,7 +69,7 @@ Shortcut Management:
     parser.add_argument(
         "--init-geck",
         action="store_true",
-        help="Initialize full LLM_GECK folder structure (use with --cli)",
+        help="Initialize full GECK folder structure (use with --cli)",
     )
 
     parser.add_argument(

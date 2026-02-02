@@ -73,7 +73,7 @@ Decisions currently live implicitly inside logs. This obscures:
 - long-term consequences
 
 ### Action
-Add an optional but canonical file: `LLM_GECK/decisions.md`
+Add an optional but canonical file: `GECK/decisions.md`
 
 ### File Purpose
 - Immutable record of architectural and strategic decisions
