@@ -190,8 +190,8 @@ class TestGECKFolderCreation:
 
         # LLM_init.md should have profile-suggested criteria (now inside GECK folder)
         llm_init = (geck_path / "LLM_init.md").read_text(encoding="utf-8")
-        # web_app profile suggests these criteria
-        assert "API" in llm_init or "endpoint" in llm_init.lower()
+        # web_app profile suggests criteria about state management and user interactions
+        assert "State management" in llm_init or "User interactions" in llm_init
 
 
 class TestReporIntegration:

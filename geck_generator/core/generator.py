@@ -117,6 +117,7 @@ class GECKGenerator:
         config.setdefault("project_name", "Untitled Project")
         config.setdefault("goal", "No goal specified.")
         config.setdefault("success_criteria", [])
+        config.setdefault("frameworks", [])
         config.setdefault("platforms", [])
 
         # Render the template
@@ -243,6 +244,7 @@ class GECKGenerator:
         config.setdefault("project_name", "Untitled Project")
         config.setdefault("goal", "No goal specified.")
         config.setdefault("success_criteria", [])
+        config.setdefault("frameworks", [])
         config.setdefault("platforms", [])
 
         # Detect environment
@@ -413,6 +415,7 @@ class GECKGenerator:
             "goal": "",
             "success_criteria": [],
             "languages": "",
+            "frameworks": [],
             "must_use": "",
             "must_avoid": "",
             "platforms": [],

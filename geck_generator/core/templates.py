@@ -26,7 +26,8 @@ LLM_INIT_TEMPLATE = """\
 
 ## Constraints
 
-- **Languages/Frameworks:** {{ languages | default('Not specified', true) }}
+- **Languages:** {{ languages | default('Not specified', true) }}
+- **Frameworks:** {{ frameworks | join(', ') if frameworks else 'Not specified' }}
 - **Must use:** {{ must_use | default('None specified', true) }}
 - **Must avoid:** {{ must_avoid | default('None specified', true) }}
 - **Target platforms:** {{ platforms | join(', ') if platforms else 'Not specified' }}

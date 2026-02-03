@@ -94,8 +94,26 @@ def run_interactive() -> dict[str, Any]:
         raise KeyboardInterrupt("User cancelled")
 
     if use_profile:
+        # First, select a category
+        category_choices = []
+        for cat in profiles.get_categories_with_profiles():
+            category_choices.append(questionary.Choice(
+                title=f"{cat['name']} - {cat['description']}",
+                value=cat["key"],
+            ))
+
+        selected_category = questionary.select(
+            "Select a category:",
+            choices=category_choices,
+            style=custom_style,
+        ).ask()
+
+        if selected_category is None:
+            raise KeyboardInterrupt("User cancelled")
+
+        # Then, select a profile within that category
         profile_choices = []
-        for key, name, desc in profiles.get_profile_names_with_descriptions():
+        for key, name, desc in profiles.get_profiles_for_category(selected_category):
             profile_choices.append(questionary.Choice(
                 title=f"{name} - {desc}",
                 value=key,

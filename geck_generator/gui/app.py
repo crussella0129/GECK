@@ -485,27 +485,62 @@ class GECKGeneratorGUI:
 
     def setup_profile_tab(self):
         """Set up the Profile & Constraints tab."""
-        # Profile selection
+        # Profile selection with category-based navigation
         profile_label_frame = ttk.LabelFrame(
             self.profile_frame, text="Project Profile", padding=10
         )
         profile_label_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Label(profile_label_frame, text="Select Profile:").pack(anchor=tk.W)
+        # Category selection
+        category_frame = ttk.Frame(profile_label_frame)
+        category_frame.pack(fill=tk.X, pady=5)
 
-        profile_choices = [("None", "none")]
-        for key, name, desc in self.profiles.get_profile_names_with_descriptions():
-            profile_choices.append((f"{name}", key))
+        ttk.Label(category_frame, text="Category:").pack(side=tk.LEFT, padx=(0, 10))
 
-        for text, value in profile_choices:
-            rb = ttk.Radiobutton(
-                profile_label_frame,
-                text=text,
-                value=value,
-                variable=self.profile_var,
-                command=self.on_profile_change,
-            )
-            rb.pack(anchor=tk.W, pady=2)
+        # Build category choices with "None" option
+        self.category_choices = [("-- No Profile --", "none")]
+        for cat in self.profiles.get_categories_with_profiles():
+            self.category_choices.append((cat["name"], cat["key"]))
+
+        self.category_var = tk.StringVar(value="none")
+        self.category_combo = ttk.Combobox(
+            category_frame,
+            textvariable=self.category_var,
+            values=[c[0] for c in self.category_choices],
+            state="readonly",
+            width=30,
+        )
+        self.category_combo.current(0)
+        self.category_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.category_combo.bind("<<ComboboxSelected>>", self.on_category_change)
+
+        # Profile selection within category
+        profile_select_frame = ttk.Frame(profile_label_frame)
+        profile_select_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(profile_select_frame, text="Profile:").pack(side=tk.LEFT, padx=(0, 10))
+
+        self.profile_choices = [("-- Select Category First --", "none")]
+        self.profile_combo = ttk.Combobox(
+            profile_select_frame,
+            textvariable=self.profile_var,
+            values=[p[0] for p in self.profile_choices],
+            state="readonly",
+            width=30,
+        )
+        self.profile_combo.current(0)
+        self.profile_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.profile_combo.bind("<<ComboboxSelected>>", self.on_profile_combo_change)
+
+        # Profile description label
+        self.profile_desc_var = tk.StringVar(value="")
+        self.profile_desc_label = ttk.Label(
+            profile_label_frame,
+            textvariable=self.profile_desc_var,
+            wraplength=500,
+            foreground="gray",
+        )
+        self.profile_desc_label.pack(anchor=tk.W, pady=(5, 0))
 
         # Constraints
         constraints_frame = ttk.LabelFrame(
@@ -643,13 +678,56 @@ class GECKGeneratorGUI:
         if path:
             self.local_path_var.set(path)
 
-    def on_profile_change(self):
-        """Handle profile selection change."""
-        profile_key = self.profile_var.get()
+    def on_category_change(self, event=None):
+        """Handle category selection change."""
+        # Find the selected category key
+        selected_text = self.category_combo.get()
+        category_key = "none"
+        for name, key in self.category_choices:
+            if name == selected_text:
+                category_key = key
+                break
+
+        # Update profile dropdown based on category
+        if category_key == "none":
+            self.profile_choices = [("-- No Profile --", "none")]
+            self.profile_var.set("none")
+            self.profile_desc_var.set("")
+        else:
+            profiles = self.profiles.get_profiles_for_category(category_key)
+            self.profile_choices = [(name, key) for key, name, desc in profiles]
+            if self.profile_choices:
+                # Select first profile in category
+                self.profile_var.set(self.profile_choices[0][1])
+
+        # Update profile combobox values
+        self.profile_combo["values"] = [p[0] for p in self.profile_choices]
+        if self.profile_choices:
+            self.profile_combo.current(0)
+
+        # Trigger profile change to update fields
+        self.on_profile_combo_change()
+
+    def on_profile_combo_change(self, event=None):
+        """Handle profile selection change from combobox."""
+        # Find the selected profile key
+        selected_text = self.profile_combo.get()
+        profile_key = "none"
+        for name, key in self.profile_choices:
+            if name == selected_text:
+                profile_key = key
+                break
+
+        self.profile_var.set(profile_key)
+
         if profile_key == "none":
+            self.profile_desc_var.set("")
             return
 
         profile = self.profiles.get_profile(profile_key)
+
+        # Update description
+        self.profile_desc_var.set(profile.get("description", ""))
 
         # Update languages
         if profile.get("languages"):
