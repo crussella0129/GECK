@@ -12,7 +12,8 @@ LLM_INIT_TEMPLATE = """\
 
 **Repository:** {{ repo_url | default('Not specified', true) }}
 **Local Path:** {{ local_path | default('Not specified', true) }}
-**Created:** {{ created_date }}
+{% if git_branch %}**Branch:** {{ git_branch }}
+{% endif %}**Created:** {{ created_date }}
 
 ## Goal
 

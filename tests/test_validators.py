@@ -306,17 +306,17 @@ class TestIsGitRepo:
         assert result is False
 
     def test_git_dir_returns_true(self, temp_dir):
-        """Directory with .git folder should return True."""
-        git_dir = temp_dir / ".git"
-        git_dir.mkdir()
+        """Real git repo should return True."""
+        import subprocess
+        subprocess.run(["git", "init", str(temp_dir)], capture_output=True, check=True)
 
         result = is_git_repo(str(temp_dir))
         assert result is True
 
     def test_subdirectory_of_git_repo(self, temp_dir):
         """Subdirectory of git repo should return True."""
-        git_dir = temp_dir / ".git"
-        git_dir.mkdir()
+        import subprocess
+        subprocess.run(["git", "init", str(temp_dir)], capture_output=True, check=True)
 
         subdir = temp_dir / "src" / "lib"
         subdir.mkdir(parents=True)

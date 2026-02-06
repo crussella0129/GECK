@@ -187,48 +187,5 @@ def validate_context(context: str) -> tuple[bool, str]:
     return True, ""
 
 
-def is_git_repo(path: str) -> bool:
-    """
-    Check if a path is inside a git repository.
-
-    Args:
-        path: Path to check
-
-    Returns:
-        True if path is in a git repo
-    """
-    try:
-        p = Path(path).resolve()
-        while p != p.parent:
-            if (p / ".git").exists():
-                return True
-            p = p.parent
-        return False
-    except Exception:
-        return False
-
-
-def suggest_repo_url(path: str) -> str | None:
-    """
-    Try to suggest a repository URL from a git repo.
-
-    Args:
-        path: Path to check
-
-    Returns:
-        Repository URL if found, None otherwise
-    """
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            ["git", "-C", path, "remote", "get-url", "origin"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return None
+# Re-exported from git_utils for backward compatibility
+from geck_generator.utils.git_utils import is_git_repo, suggest_repo_url  # noqa: F401

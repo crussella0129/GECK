@@ -8,6 +8,15 @@ import sys
 
 from geck_generator.core.generator import GECKGenerator
 from geck_generator.core.profiles import ProfileManager, ReporProfileManager
+from geck_generator.utils.git_utils import (
+    is_git_repo,
+    suggest_repo_url,
+    get_current_branch,
+    get_branches,
+    has_uncommitted_changes,
+    checkout_branch,
+    fetch_all,
+)
 
 
 def get_icon_path() -> Path | None:
@@ -63,12 +72,32 @@ class GECKGeneratorGUI:
         self.repor_goals_list: list[str] = []
         self.repor_profile_var = tk.StringVar(value="none")
 
+        # Git branch variables - Bootstrapper
+        self.boot_branch_var = tk.StringVar()
+        self.boot_branches: list[str] = []
+        self.boot_is_git_repo = False
+        self.boot_git_frame: ttk.LabelFrame | None = None
+
+        # Git branch variables - Repor
+        self.repor_branch_var = tk.StringVar()
+        self.repor_branches: list[str] = []
+        self.repor_is_git_repo = False
+        self.repor_git_frame: ttk.LabelFrame | None = None
+
         # Frame references
         self.main_menu_frame: ttk.Frame | None = None
         self.bootstrapper_frame: ttk.Frame | None = None
         self.repor_frame: ttk.Frame | None = None
 
         self.setup_ui()
+
+        # Check initial paths for git repos after UI is built
+        initial_path = self.local_path_var.get()
+        if initial_path and is_git_repo(initial_path):
+            self._check_boot_git(initial_path)
+        initial_repor_path = self.repor_working_dir_var.get()
+        if initial_repor_path and is_git_repo(initial_repor_path):
+            self._update_repor_git_ui(initial_repor_path)
 
     def setup_ui(self):
         """Set up the main UI components."""
@@ -241,8 +270,9 @@ class GECKGeneratorGUI:
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Section 1: Working Directory
-        wd_frame = ttk.LabelFrame(scrollable_frame, text="Working Directory", padding=10)
-        wd_frame.pack(fill=tk.X, pady=5)
+        self._repor_wd_frame = ttk.LabelFrame(scrollable_frame, text="Working Directory", padding=10)
+        self._repor_wd_frame.pack(fill=tk.X, pady=5)
+        wd_frame = self._repor_wd_frame
 
         wd_entry_frame = ttk.Frame(wd_frame)
         wd_entry_frame.pack(fill=tk.X)
@@ -253,6 +283,31 @@ class GECKGeneratorGUI:
         ttk.Button(wd_entry_frame, text="Browse...", command=self.browse_repor_working_dir).pack(
             side=tk.LEFT, padx=(5, 0)
         )
+
+        # Git Branch (initially hidden)
+        self.repor_git_frame = ttk.LabelFrame(scrollable_frame, text="Git Branch", padding=5)
+        # Not packed yet - shown only when a git repo is selected
+
+        repor_branch_row = ttk.Frame(self.repor_git_frame)
+        repor_branch_row.pack(fill=tk.X)
+
+        self.repor_branch_combo = ttk.Combobox(
+            repor_branch_row, textvariable=self.repor_branch_var, state="readonly", width=35
+        )
+        self.repor_branch_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        ttk.Button(repor_branch_row, text="Checkout", command=self._repor_checkout_branch).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
+        ttk.Button(repor_branch_row, text="Fetch Latest", command=self._repor_fetch_branches).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
+
+        self.repor_git_status_var = tk.StringVar()
+        self.repor_git_status_label = ttk.Label(
+            self.repor_git_frame, textvariable=self.repor_git_status_var, foreground="gray"
+        )
+        self.repor_git_status_label.pack(anchor=tk.W, pady=(2, 0))
 
         # Section 2: Git Repositories
         repos_frame = ttk.LabelFrame(scrollable_frame, text="Git Repositories to Explore", padding=10)
@@ -480,6 +535,31 @@ class GECKGeneratorGUI:
             side=tk.LEFT, padx=(5, 0)
         )
 
+        # Git Branch (row 3) - initially hidden
+        self.boot_git_frame = ttk.LabelFrame(self.basic_frame, text="Git Branch", padding=5)
+        # Not gridded yet - shown only when a git repo is selected
+
+        branch_row = ttk.Frame(self.boot_git_frame)
+        branch_row.pack(fill=tk.X)
+
+        self.boot_branch_combo = ttk.Combobox(
+            branch_row, textvariable=self.boot_branch_var, state="readonly", width=35
+        )
+        self.boot_branch_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        ttk.Button(branch_row, text="Checkout", command=self._boot_checkout_branch).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
+        ttk.Button(branch_row, text="Fetch Latest", command=self._boot_fetch_branches).pack(
+            side=tk.LEFT, padx=(5, 0)
+        )
+
+        self.boot_git_status_var = tk.StringVar()
+        self.boot_git_status_label = ttk.Label(
+            self.boot_git_frame, textvariable=self.boot_git_status_var, foreground="gray"
+        )
+        self.boot_git_status_label.pack(anchor=tk.W, pady=(2, 0))
+
         # Configure column weights
         self.basic_frame.columnconfigure(1, weight=1)
 
@@ -677,6 +757,17 @@ class GECKGeneratorGUI:
         path = filedialog.askdirectory(initialdir=self.local_path_var.get())
         if path:
             self.local_path_var.set(path)
+            self._check_boot_git(path)
+
+    def _check_boot_git(self, path: str):
+        """Check if path is a git repo and update UI accordingly."""
+        if is_git_repo(path):
+            url = suggest_repo_url(path)
+            if url and not self.repo_url_var.get():
+                self.repo_url_var.set(url)
+            self._update_boot_git_ui(path)
+        else:
+            self._hide_boot_git_ui()
 
     def on_category_change(self, event=None):
         """Handle category selection change."""
@@ -789,6 +880,7 @@ class GECKGeneratorGUI:
             "platforms": [
                 p for p, var in self.platforms_vars.items() if var.get()
             ],
+            "git_branch": get_current_branch(self.local_path_var.get()) if self.boot_is_git_repo else None,
         }
         return config
 
@@ -839,12 +931,76 @@ class GECKGeneratorGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to bootstrap GECK project:\n{e}")
 
+    # Bootstrapper git branch methods
+    def _update_boot_git_ui(self, path: str):
+        """Show and populate the git branch UI for Bootstrapper."""
+        self.boot_is_git_repo = True
+        self.boot_branches = get_branches(path, include_remote=False)
+        current = get_current_branch(path)
+
+        self.boot_branch_combo["values"] = self.boot_branches
+        if current and current in self.boot_branches:
+            self.boot_branch_var.set(current)
+        elif self.boot_branches:
+            self.boot_branch_var.set(self.boot_branches[0])
+
+        status = f"Current branch: {current}" if current else "Detached HEAD"
+        if has_uncommitted_changes(path):
+            status += " (uncommitted changes)"
+        self.boot_git_status_var.set(status)
+
+        self.boot_git_frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=5, padx=5)
+
+    def _hide_boot_git_ui(self):
+        """Hide the git branch UI for Bootstrapper."""
+        self.boot_is_git_repo = False
+        self.boot_git_frame.grid_forget()
+
+    def _boot_checkout_branch(self):
+        """Checkout the selected branch in the Bootstrapper path."""
+        path = self.local_path_var.get()
+        branch = self.boot_branch_var.get()
+        if not path or not branch:
+            return
+
+        if has_uncommitted_changes(path):
+            messagebox.showwarning(
+                "Uncommitted Changes",
+                "You have uncommitted changes. Please commit or stash them before switching branches."
+            )
+            return
+
+        success, msg = checkout_branch(path, branch)
+        if success:
+            self._update_boot_git_ui(path)
+        else:
+            messagebox.showerror("Checkout Failed", msg)
+
+    def _boot_fetch_branches(self):
+        """Fetch latest from all remotes and refresh branch list."""
+        path = self.local_path_var.get()
+        if not path:
+            return
+
+        self.boot_git_status_var.set("Fetching...")
+        self.root.update_idletasks()
+
+        success, msg = fetch_all(path)
+        if success:
+            self._update_boot_git_ui(path)
+        else:
+            self.boot_git_status_var.set(f"Fetch failed: {msg}")
+
     # Repor action methods
     def browse_repor_working_dir(self):
         """Open file dialog to browse for Repor working directory."""
         path = filedialog.askdirectory(initialdir=self.repor_working_dir_var.get())
         if path:
             self.repor_working_dir_var.set(path)
+            if is_git_repo(path):
+                self._update_repor_git_ui(path)
+            else:
+                self._hide_repor_git_ui()
 
     def add_repor_repo(self):
         """Add a repository URL to the Repor list."""
@@ -899,6 +1055,67 @@ class GECKGeneratorGUI:
         """Get the selected Repor profile key."""
         display_name = self.repor_profile_combo.get()
         return self._repor_profile_map.get(display_name, "none")
+
+    # Repor git branch methods
+    def _update_repor_git_ui(self, path: str):
+        """Show and populate the git branch UI for Repor."""
+        self.repor_is_git_repo = True
+        self.repor_branches = get_branches(path, include_remote=False)
+        current = get_current_branch(path)
+
+        self.repor_branch_combo["values"] = self.repor_branches
+        if current and current in self.repor_branches:
+            self.repor_branch_var.set(current)
+        elif self.repor_branches:
+            self.repor_branch_var.set(self.repor_branches[0])
+
+        status = f"Current branch: {current}" if current else "Detached HEAD"
+        if has_uncommitted_changes(path):
+            status += " (uncommitted changes)"
+        self.repor_git_status_var.set(status)
+
+        # Pack after the Working Directory section
+        self.repor_git_frame.pack(fill=tk.X, pady=5, after=self._repor_wd_frame)
+
+    def _hide_repor_git_ui(self):
+        """Hide the git branch UI for Repor."""
+        self.repor_is_git_repo = False
+        self.repor_git_frame.pack_forget()
+
+    def _repor_checkout_branch(self):
+        """Checkout the selected branch in the Repor working directory."""
+        path = self.repor_working_dir_var.get()
+        branch = self.repor_branch_var.get()
+        if not path or not branch:
+            return
+
+        if has_uncommitted_changes(path):
+            messagebox.showwarning(
+                "Uncommitted Changes",
+                "You have uncommitted changes. Please commit or stash them before switching branches."
+            )
+            return
+
+        success, msg = checkout_branch(path, branch)
+        if success:
+            self._update_repor_git_ui(path)
+        else:
+            messagebox.showerror("Checkout Failed", msg)
+
+    def _repor_fetch_branches(self):
+        """Fetch latest from all remotes and refresh branch list for Repor."""
+        path = self.repor_working_dir_var.get()
+        if not path:
+            return
+
+        self.repor_git_status_var.set("Fetching...")
+        self.root.update_idletasks()
+
+        success, msg = fetch_all(path)
+        if success:
+            self._update_repor_git_ui(path)
+        else:
+            self.repor_git_status_var.set(f"Fetch failed: {msg}")
 
     def create_repor_instructions(self):
         """Create GECK Repor agent instructions file."""

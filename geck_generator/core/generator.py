@@ -421,6 +421,7 @@ class GECKGenerator:
             "platforms": [],
             "context": "",
             "initial_task": "",
+            "git_branch": None,
         }
 
     def generate_repor_instructions(

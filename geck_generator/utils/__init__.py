@@ -12,6 +12,15 @@ from geck_generator.utils.shortcuts import (
     get_shortcut_info,
     get_platform,
 )
+from geck_generator.utils.git_utils import (
+    is_git_repo,
+    suggest_repo_url,
+    get_current_branch,
+    get_branches,
+    has_uncommitted_changes,
+    checkout_branch,
+    fetch_all,
+)
 
 __all__ = [
     "validate_url",
@@ -22,4 +31,11 @@ __all__ = [
     "remove_shortcuts",
     "get_shortcut_info",
     "get_platform",
+    "is_git_repo",
+    "suggest_repo_url",
+    "get_current_branch",
+    "get_branches",
+    "has_uncommitted_changes",
+    "checkout_branch",
+    "fetch_all",
 ]
