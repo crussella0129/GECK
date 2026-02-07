@@ -20,23 +20,17 @@ from geck_generator.utils.git_utils import (
 
 
 def get_icon_path() -> Path | None:
-    """Get the path to the application icon."""
-    # Try relative to this module first
-    module_dir = Path(__file__).parent.parent
-    icon_path = module_dir / "resources" / "geck_icon.ico"
-    if icon_path.exists():
-        return icon_path
-
-    # Try relative to package installation
+    """Get the path to the application icon (.png preferred, .ico fallback)."""
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         base_path = Path(sys.executable).parent
     else:
         base_path = Path(__file__).parent.parent
 
-    icon_path = base_path / "resources" / "geck_icon.ico"
-    if icon_path.exists():
-        return icon_path
+    resources = base_path / "resources"
+    for ext in ("png", "ico"):
+        icon_path = resources / f"geck_icon.{ext}"
+        if icon_path.exists():
+            return icon_path
 
     return None
 
@@ -1179,7 +1173,11 @@ def run_gui():
     icon_path = get_icon_path()
     if icon_path:
         try:
-            root.iconbitmap(str(icon_path))
+            if icon_path.suffix == ".png":
+                icon_image = tk.PhotoImage(file=str(icon_path))
+                root.iconphoto(True, icon_image)
+            else:
+                root.iconbitmap(str(icon_path))
         except tk.TclError:
             pass  # Icon loading failed, continue without it
 
