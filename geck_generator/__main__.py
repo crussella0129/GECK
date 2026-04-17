@@ -17,6 +17,7 @@ Examples:
   python -m geck_generator --cli              # Interactive CLI
   python -m geck_generator --gui              # GUI application
   python -m geck_generator --profile web_app -o ./project/LLM_init.md
+  python -m geck_generator --profile web_app --context-budget large -o ./LLM_init.md
   python -m geck_generator --cli --init-geck  # Create full GECK folder
   python -m geck_generator --list-profiles    # Show available profiles
 
@@ -96,6 +97,14 @@ Shortcut Management:
         type=str,
         metavar="TEXT",
         help="Project goal (for --profile mode)",
+    )
+
+    parser.add_argument(
+        "--context-budget",
+        choices=["small", "medium", "large"],
+        default=None,
+        metavar="BUDGET",
+        help="Assumed model context window (small/medium/large) — drives v1.3 LOG_ACTIVE_ENTRIES",
     )
 
     # Shortcut management arguments
@@ -254,6 +263,8 @@ Shortcut Management:
             "project_name": project_name,
             "goal": goal,
         }
+        if args.context_budget:
+            config["context_budget"] = args.context_budget
 
         content = generator.generate(config)
 
