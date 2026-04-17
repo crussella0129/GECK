@@ -4,7 +4,7 @@ A tool for generating macro-prompts, as well as a GitHub Repo framework, for use
 
 ## Contents
 
-- **GECK/** - The Garden of Eden Creation Kit protocol specifications (v1.0, v1.1, v1.2)
+- **GECK/** - The Garden of Eden Creation Kit protocol specifications (v1.0, v1.1, v1.2, v1.3)
 - **geck_generator/** - A GUI/CLI tool to generate GECK project files
 
 ---
@@ -23,19 +23,25 @@ When working with CLI LLM agents (Claude Code, Aider, Cursor, etc.):
 
 ### How GECK Works
 
-GECK (v1.2) creates a simple folder structure in your project:
+GECK (v1.3) creates a structured folder in your project:
 
 ```
 your_project/
 └── GECK/
-    ├── LLM_init.md      # Your project goals and constraints
-    ├── GECK_Inst.md     # Instructions for the AI agent
-    ├── log.md           # Session history (long-term memory)
-    ├── tasks.md         # Current task list (working memory)
-    └── env.md           # Environment documentation
+    ├── LLM_init.md         # Project goals, constraints, context budget
+    ├── GECK_Inst.md        # Instructions for the AI agent (protocol v1.3)
+    ├── env.md              # Environment documentation
+    ├── tasks.md            # Typed tasks with stable TASK-NNN IDs
+    ├── log.md              # Episodic per-turn log (tightened format)
+    ├── log_index.jsonl     # Machine-readable log index (one JSON line per entry)
+    ├── decisions.md        # Index of decision records
+    ├── decisions/          # Per-decision files (DECISION-NNN.md)
+    ├── learnings.md        # Index of learning records
+    ├── learnings/          # Per-learning files (LEARNING-NNN.md)
+    └── log_archive/        # Rolled-over log entries
 ```
 
-At the start of each session, you point the AI to these files. It reads the context, understands what was done before, and continues where it left off.
+At the start of each session, you point the AI to these files. It reads only the slice it needs (driven by the declared **Context Budget**), understands what was done before, and continues where it left off.
 
 ---
 
@@ -218,11 +224,22 @@ Read the last log entry and remind me where we left off.
 
 | Version | Status | Description |
 |---------|--------|-------------|
-| v1.2 | Current | Added GECK_Inst.md for AI agent instructions |
+| v1.3 | Current | Typed tasks (TASK-NNN), decisions/learnings as first-class records, Drift Check, tiered log + JSONL index, Context Budget |
+| v1.2 | Stable | Added GECK_Inst.md for AI agent instructions |
 | v1.1 | Stable | Work modes, simplified file names |
 | v1.0 | Legacy | Initial release |
 
-See `GECK/GECK_Macro_v1.2.md` for the full protocol specification.
+See `GECK/GECK_Macro_v1.3.md` for the full protocol specification.
+
+### Why v1.3
+
+v1.3 sharpens the protocol around how a fresh agent reconstructs context across sessions:
+
+- **Typed tasks with stable IDs.** Tasks are addressable as `TASK-NNN` with a TYPE/SCOPE/OWNER header, so log entries and decisions can reference them without ambiguity.
+- **Decisions and learnings are first-class.** Each is a per-record file under `decisions/` or `learnings/` with YAML frontmatter, indexed by `decisions.md` / `learnings.md` — the same composition pattern used by Claude Code's memory system, adapted clean-room for git.
+- **Tightened log + JSONL index.** `log.md` keeps the human-auditable narrative (Did / Files / State / Refs / Next); `log_index.jsonl` gives the next agent a one-line-per-entry index it can scan cheaply.
+- **Drift Check.** A short cognitive checksum at session start catches stale assumptions before they propagate.
+- **Context Budget.** A `small` / `medium` / `large` parameter declared in `LLM_init.md` tells the next agent how many recent log entries to load (3 / 10 / 25), so the protocol adapts to the model window without per-agent guessing.
 
 ---
 

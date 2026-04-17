@@ -94,6 +94,10 @@ class GECKGenerator:
     # Standard list of platforms for env.md
     ALL_PLATFORMS = ["Windows", "macOS", "Linux", "Docker", "iOS", "Android", "Web"]
 
+    # Context budget options for v1.3 (drives LOG_ACTIVE_ENTRIES)
+    CONTEXT_BUDGETS = ("small", "medium", "large")
+    DEFAULT_CONTEXT_BUDGET = "medium"
+
     def __init__(self):
         """Initialize the generator with template engine and profile manager."""
         self.template_engine = TemplateEngine()
@@ -119,6 +123,7 @@ class GECKGenerator:
         config.setdefault("success_criteria", [])
         config.setdefault("frameworks", [])
         config.setdefault("platforms", [])
+        config.setdefault("context_budget", self.DEFAULT_CONTEXT_BUDGET)
 
         # Render the template
         return self.template_engine.render("llm_init", config)
@@ -214,7 +219,7 @@ class GECKGenerator:
 
     def init_geck_folder(self, project_path: Path | str, config: dict[str, Any]) -> Path:
         """
-        Create full GECK folder structure with all files.
+        Create full GECK v1.3 folder structure with all files and subfolders.
 
         Creates:
         - GECK/LLM_init.md
@@ -222,6 +227,12 @@ class GECKGenerator:
         - GECK/env.md
         - GECK/tasks.md
         - GECK/log.md
+        - GECK/log_index.jsonl
+        - GECK/log_archive/
+        - GECK/decisions.md
+        - GECK/decisions/
+        - GECK/learnings.md
+        - GECK/learnings/
 
         Args:
             project_path: Path to the project root
@@ -233,8 +244,11 @@ class GECKGenerator:
         project_path = Path(project_path)
         geck_folder = project_path / "GECK"
 
-        # Create the GECK folder
+        # Create the GECK folder + subfolders
         geck_folder.mkdir(parents=True, exist_ok=True)
+        (geck_folder / "decisions").mkdir(exist_ok=True)
+        (geck_folder / "learnings").mkdir(exist_ok=True)
+        (geck_folder / "log_archive").mkdir(exist_ok=True)
 
         # Apply profile if specified
         if "profile" in config and config["profile"]:
@@ -246,14 +260,15 @@ class GECKGenerator:
         config.setdefault("success_criteria", [])
         config.setdefault("frameworks", [])
         config.setdefault("platforms", [])
+        config.setdefault("context_budget", self.DEFAULT_CONTEXT_BUDGET)
 
         # Detect environment
         env_info = _detect_environment()
         timestamp = env_info["timestamp"]
+        iso_timestamp = datetime.now().isoformat(timespec="seconds")
 
-        # Derive initial tasks and understood goals
+        # Derive initial tasks
         initial_tasks = self._derive_initial_tasks(config)
-        understood_goals = self._parse_goal_to_bullets(config.get("goal", ""))
 
         # 1. Write LLM_init.md inside GECK folder
         init_content = self.template_engine.render("llm_init", config)
@@ -276,7 +291,7 @@ class GECKGenerator:
         env_content = self.template_engine.render("env", env_vars)
         (geck_folder / "env.md").write_text(env_content, encoding="utf-8")
 
-        # 4. Write tasks.md (with initial tasks)
+        # 4. Write tasks.md (typed v1.3 tasks)
         tasks_vars = {
             "project_name": config["project_name"],
             "timestamp": timestamp,
@@ -285,15 +300,31 @@ class GECKGenerator:
         tasks_content = self.template_engine.render("tasks", tasks_vars)
         (geck_folder / "tasks.md").write_text(tasks_content, encoding="utf-8")
 
-        # 5. Write log.md (Entry #0 format)
+        # 5. Write log.md (tightened Entry #0)
         log_vars = {
             "project_name": config["project_name"],
             "timestamp": timestamp,
-            "understood_goals": understood_goals,
-            "initial_tasks": initial_tasks,
         }
         log_content = self.template_engine.render("log", log_vars)
         (geck_folder / "log.md").write_text(log_content, encoding="utf-8")
+
+        # 6. Write log_index.jsonl (Entry #0 line)
+        log_index_content = self.template_engine.render(
+            "log_index", {"timestamp": iso_timestamp}
+        )
+        (geck_folder / "log_index.jsonl").write_text(log_index_content, encoding="utf-8")
+
+        # 7. Write decisions.md index (empty)
+        decisions_content = self.template_engine.render(
+            "decisions_index", {"project_name": config["project_name"]}
+        )
+        (geck_folder / "decisions.md").write_text(decisions_content, encoding="utf-8")
+
+        # 8. Write learnings.md index (empty)
+        learnings_content = self.template_engine.render(
+            "learnings_index", {"project_name": config["project_name"]}
+        )
+        (geck_folder / "learnings.md").write_text(learnings_content, encoding="utf-8")
 
         return geck_folder
 
@@ -398,6 +429,14 @@ class GECKGenerator:
             if not isinstance(config["platforms"], list):
                 errors.append("Platforms must be a list")
 
+        # Validate context_budget is one of the allowed values
+        if "context_budget" in config and config["context_budget"]:
+            if config["context_budget"] not in self.CONTEXT_BUDGETS:
+                errors.append(
+                    f"context_budget must be one of {self.CONTEXT_BUDGETS}, "
+                    f"got {config['context_budget']!r}"
+                )
+
         return errors
 
     def get_config_template(self) -> dict[str, Any]:
@@ -422,6 +461,7 @@ class GECKGenerator:
             "context": "",
             "initial_task": "",
             "git_branch": None,
+            "context_budget": self.DEFAULT_CONTEXT_BUDGET,
         }
 
     def generate_repor_instructions(

@@ -690,6 +690,32 @@ class GECKGeneratorGUI:
         self.initial_task_text = scrolledtext.ScrolledText(task_frame, height=2, wrap=tk.WORD)
         self.initial_task_text.pack(fill=tk.X, expand=True, pady=5)
 
+        # Context Budget (v1.3) — drives LOG_ACTIVE_ENTRIES at runtime
+        budget_frame = ttk.LabelFrame(self.goals_frame, text="Context Budget (v1.3)", padding=10)
+        budget_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(
+            budget_frame,
+            text="Assumed model context window. Drives how many log entries the agent keeps active.",
+            foreground="gray",
+            wraplength=500,
+        ).pack(anchor=tk.W)
+
+        self.context_budget_var = tk.StringVar(value="medium")
+        budget_row = ttk.Frame(budget_frame)
+        budget_row.pack(anchor=tk.W, pady=(5, 0))
+        for label, value in (
+            ("small (8k–32k)", "small"),
+            ("medium (32k–128k)", "medium"),
+            ("large (128k+)", "large"),
+        ):
+            ttk.Radiobutton(
+                budget_row,
+                text=label,
+                variable=self.context_budget_var,
+                value=value,
+            ).pack(side=tk.LEFT, padx=(0, 12))
+
         # Info about default task
         default_task_info = ttk.Label(
             task_frame,
@@ -875,6 +901,7 @@ class GECKGeneratorGUI:
                 p for p, var in self.platforms_vars.items() if var.get()
             ],
             "git_branch": get_current_branch(self.local_path_var.get()) if self.boot_is_git_repo else None,
+            "context_budget": self.context_budget_var.get(),
         }
         return config
 

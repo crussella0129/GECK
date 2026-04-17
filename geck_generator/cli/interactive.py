@@ -270,6 +270,24 @@ def run_interactive() -> dict[str, Any]:
     if config["initial_task"] is None:
         config["initial_task"] = ""
 
+    # Step 7: Context budget (drives LOG_ACTIVE_ENTRIES in v1.3)
+    print("\n🧠 Step 7: Context Budget\n")
+    print("  Tells the agent how much of the log to keep active per session.")
+    print("  Pick the smallest tier that comfortably fits the model you intend to use.\n")
+
+    budget_choice = questionary.select(
+        "Context budget for the assumed model:",
+        choices=[
+            questionary.Choice("small  (8k–32k tokens, e.g. older models)", value="small"),
+            questionary.Choice("medium (32k–128k tokens, most current models)", value="medium"),
+            questionary.Choice("large  (128k+ tokens, frontier models)", value="large"),
+        ],
+        default="medium",
+        style=custom_style,
+    ).ask()
+
+    config["context_budget"] = budget_choice or "medium"
+
     # Preview
     print("\n" + "=" * 60)
     print("  Preview")

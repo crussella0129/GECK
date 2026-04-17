@@ -1,4 +1,4 @@
-"""Template definitions and rendering for GECK Generator."""
+"""Template definitions and rendering for GECK Generator (v1.3)."""
 
 from datetime import datetime
 from typing import Any
@@ -14,6 +14,8 @@ LLM_INIT_TEMPLATE = """\
 **Local Path:** {{ local_path | default('Not specified', true) }}
 {% if git_branch %}**Branch:** {{ git_branch }}
 {% endif %}**Created:** {{ created_date }}
+**GECK Protocol:** v1.3
+**Context Budget:** {{ context_budget | default('medium', true) }}
 
 ## Goal
 
@@ -42,27 +44,64 @@ LLM_INIT_TEMPLATE = """\
 {{ initial_task | default('Begin implementation based on the goal and success criteria above.', true) }}
 """
 
-# GECK_Inst.md template (static - AI agent instructions from v1.2 spec)
+# GECK_Inst.md template (v1.3 — agent operating instructions)
 GECK_INST_TEMPLATE = """\
 # GECK Agent Instructions
 ## Quick Reference for AI Assistants
 
-**Protocol Version:** 1.2
+**Protocol Version:** 1.3
 
 ---
 
 ## On Session Start
 
-1. **Check for GECK folder:** Does `GECK/` exist?
-   - NO → Run Phase 0 initialization
-   - YES → Continue to step 2
+1. **Check for `GECK/` folder:** if missing → run Phase 0 initialization, otherwise continue.
 
-2. **Load context:**
-   - Read `LLM_init.md` for goals and constraints
-   - Read last entry in `GECK/log.md`
-   - Read `GECK/tasks.md` for current work
+2. **Drift Check (mandatory).** Before reading the log, restate from `LLM_init.md`:
+   - Project Goal (one sentence)
+   - Active TASK-IDs (from `tasks.md`)
+   - Constraints
+   Then declare: `Drift Detected: YES | NO`. If YES, set checkpoint to WAIT and stop.
 
-3. **Identify next action** from tasks.md or human instruction
+3. **Context budget self-check.** `LLM_init.md` declares the assumed budget (small/medium/large).
+   If your actual context window is smaller than declared, downgrade to the smaller-budget rules
+   and warn the human.
+
+4. **Load context (in this order):**
+   - `decisions.md` — read the index; drill into individual `decisions/*.md` files only as needed
+   - `learnings.md` — read the index; drill into individual `learnings/*.md` files only as needed
+   - `tasks.md` — full
+   - `log.md` — last N entries (N from context budget) OR query `log_index.jsonl`
+     for entries touching active TASK-IDs
+
+---
+
+## Memory Model
+
+| Layer | File(s) | Purpose |
+|-------|---------|---------|
+| Goals | `LLM_init.md` | North star; never modify |
+| Working memory | `tasks.md` | What to do now (typed, state-machined) |
+| Semantic — decisions | `decisions.md` + `decisions/` | Why we chose what we chose |
+| Semantic — learnings | `learnings.md` + `learnings/` | What broke before; what works |
+| Episodic | `log.md` (active) | Narrative continuity |
+| Episodic archive | `log_index.jsonl`, `log_archive/` | Full history; query, don't re-read |
+| Environment | `env.md` | Compatibility constraints |
+
+You do **not** re-read the full log every session. The index is your random-access layer.
+
+---
+
+## Context Budget → LOG_ACTIVE_ENTRIES
+
+| Budget | Window | Active log entries |
+|--------|--------|-------------------|
+| `small` | 8k–32k | 3 |
+| `medium` | 32k–128k | 10 |
+| `large` | 128k+ | 25 |
+
+When `log.md` exceeds `LOG_ACTIVE_ENTRIES + 5`, roll the oldest entries into
+`log_archive/log_YYYY-MM.md`. `log_index.jsonl` always holds the full timeline.
 
 ---
 
@@ -72,40 +111,117 @@ GECK_INST_TEMPLATE = """\
 |------|------|-------|-------|
 | `LLM_init.md` | Always | Never | Human-owned, your north star |
 | `GECK_Inst.md` | Session start | Never | These instructions |
-| `log.md` | Last entry | Append only | Never edit past entries |
-| `tasks.md` | Every turn | Update freely | Keep current |
+| `tasks.md` | Every turn | Every turn | Forward-only state transitions |
+| `decisions.md` | Index every turn | When decision made | Append-only |
+| `decisions/*.md` | On demand | When decision made | One file per decision; never delete |
+| `learnings.md` | Index every turn | When learning emerges | Append-only |
+| `learnings/*.md` | On demand | When learning emerges | One file per learning; never delete |
+| `log.md` | Last N entries | Append every turn | Never edit past entries |
+| `log_index.jsonl` | Query as needed | Append every turn | One JSON object per line |
+| `log_archive/*.md` | On demand | Auto-rollover | Append-only |
 | `env.md` | As needed | When env changes | Document, don't assume |
 
 ---
 
-## Work Mode Selection
+## Tasks
 
-**Before starting work, select mode:**
+Format:
+```
+- [<state>] TASK-NNN | TYPE: <type> | SCOPE: <scope> | OWNER: <owner>
+  - Description (nested bullets give the tree shape natively)
+```
 
-- **Light mode** (single file, minor fix):
-  - Just do it
-  - Update tasks.md
-  - No log entry needed
+States: `[ ]` proposed/accepted, `[~]` active, `[!:reason]` blocked, `[x]` completed.
+State transitions are forward-only (or to blocked). Completed tasks are immutable;
+file a new task instead of reopening.
 
-- **Standard mode** (feature, multi-file):
-  - State plan first
-  - Do work
-  - Update tasks.md
-  - Add log entry
+TYPE: `feature | fix | refactor | research | chore | docs | test`
+SCOPE: `small | medium | large`
+OWNER: `agent | human`
 
-- **Heavy mode** (architecture, risky):
-  - State plan first
-  - Consider branching
-  - Do work
-  - Update tasks.md
-  - Add detailed log entry
-  - May require WAIT checkpoint
+Log entries MUST cite the TASK-IDs they touched. Completing a task MUST cite the log entry.
+
+---
+
+## Decisions
+
+Made a real decision? Create `decisions/DECISION-NNN-<slug>.md` with frontmatter:
+
+```yaml
+---
+id: DECISION-NNN
+title: <short title>
+date: <ISO timestamp>
+status: active
+related-tasks: [TASK-NNN]
+related-decisions: []
+superseded-by: null
+---
+```
+
+Body: lead with the decision, then **Why:** and **Consequences:**.
+
+Append a one-line entry to `decisions.md`. Reference the DECISION-ID in the current log entry.
+Heavy mode MUST log a DECISION-ID.
+
+---
+
+## Learnings
+
+Something broke? A non-obvious approach worked? Create `learnings/LEARNING-NNN-<slug>.md`:
+
+```yaml
+---
+id: LEARNING-NNN
+title: <short title>
+date: <ISO timestamp>
+related-tasks: [TASK-NNN]
+---
+```
+
+Body: lead with the **Rule**, then **Why:** (what broke / what was tried)
+and **How to apply:** (when this kicks in).
+
+Append a one-line entry to `learnings.md`. Reference the LEARNING-ID in the current log entry.
+
+This is the protocol's loss-prevention mechanism — future sessions read the index alone
+and avoid re-stepping on the same rakes.
+
+---
+
+## Per-Turn Log Entry (tightened)
+
+```
+## Entry #N — <ISO timestamp> — touched: TASK-001, TASK-004
+- Did: <one line>
+- Files: <comma-separated paths>
+- State: CONTINUE | WAIT | ROLLBACK
+- Refs: DECISION-002, LEARNING-001    (omit line if none)
+- Next: <one line>
+```
+
+Then append the matching JSON line to `log_index.jsonl`:
+
+```json
+{"id":N,"ts":"...","tasks":["TASK-001"],"decisions":[],"learnings":[],"files":[],"state":"CONTINUE","summary":"..."}
+```
+
+Long-form context (rationale, code snippets, screenshots) belongs in commit messages
+and PR descriptions, not duplicated in the log.
+
+---
+
+## Work Modes
+
+| Mode | When | Required updates |
+|------|------|------------------|
+| **Light** | Single-file fix, typo, trivial chore | tasks.md only |
+| **Standard** | Feature work, multi-file changes | tasks + log + log_index |
+| **Heavy** | Architecture changes, new subsystems | All of Standard + DECISION-NNN |
 
 ---
 
 ## Checkpoint Rules
-
-After each work cycle, evaluate:
 
 | Situation | Checkpoint | Action |
 |-----------|------------|--------|
@@ -114,15 +230,16 @@ After each work cycle, evaluate:
 | Unclear requirements | WAIT | Ask for clarification |
 | Something broke | ROLLBACK | Document, propose fix, stop |
 | Multiple valid approaches | WAIT | Present options, recommend one |
+| Drift detected at session start | WAIT | Describe discrepancy, stop |
 
 ---
 
 ## Commit Rules
 
 - Commit after each successful work cycle
-- Use semantic commit messages: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
+- Semantic messages: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
 - Stage specific files, not `git add .`
-- Branch for experimental work
+- Branch (`experiment/<name>`) for risky work
 
 ---
 
@@ -133,33 +250,21 @@ After each work cycle, evaluate:
 - Modifying database schemas
 - Actions that cannot be undone
 - Uncertainty about what user wants
-- Significant architectural decisions
-
----
-
-## Log Entry Format
-
-When logging (Standard/Heavy mode), include:
-
-1. **Summary** — What you did (1-2 sentences)
-2. **Actions** — Bullet list of specific actions
-3. **Files Changed** — Path and brief description
-4. **Commits** — Hash and message
-5. **Findings** — Anything notable (or "None")
-6. **Issues** — Problems with severity (or "None")
-7. **Checkpoint** — CONTINUE / WAIT / ROLLBACK
-8. **Next** — What comes next
+- Significant architectural decisions (use Decision Fork Protocol)
+- Drift detected at session start
 
 ---
 
 ## Common Mistakes to Avoid
 
-1. **Don't edit log.md history** — Append only
-2. **Don't assume environment** — Check env.md or detect
-3. **Don't skip task updates** — tasks.md is your working memory
-4. **Don't make big decisions alone** — Use Decision Fork Protocol
-5. **Don't commit without testing** — Verify work before commit
-6. **Don't forget to state checkpoint** — Human needs to know status
+1. **Don't re-read the full log every session** — query `log_index.jsonl` instead
+2. **Don't edit past log entries or completed tasks** — append-only / forward-only
+3. **Don't bury decisions in log prose** — promote to `decisions/DECISION-NNN.md`
+4. **Don't bury learnings in log prose** — promote to `learnings/LEARNING-NNN.md`
+5. **Don't skip the Drift Check** — it's the cognitive checksum that prevents goal mutation
+6. **Don't skip the index update** — `log_index.jsonl` is how future sessions navigate
+7. **Don't make big decisions alone** — use Decision Fork Protocol
+8. **Don't forget to state checkpoint** — human needs to know status
 """
 
 # env.md template
@@ -199,7 +304,7 @@ ENV_TEMPLATE = """\
 {% endfor %}
 """
 
-# tasks.md template
+# tasks.md template (v1.3 — typed, state-machined)
 TASKS_TEMPLATE = """\
 # Tasks — {{ project_name }}
 
@@ -207,19 +312,24 @@ TASKS_TEMPLATE = """\
 
 ## Legend
 
-- `[ ]` — Not started
-- `[x]` — Complete
-- `[BLOCKED: reason]` — Cannot proceed
-- `[DECISION: topic]` — Awaiting human input
+- `[ ]` proposed/accepted (not started)
+- `[~]` active (in progress)
+- `[!:reason]` blocked (reason required)
+- `[x]` completed (immutable; cite log entry)
+
+State transitions are forward-only (or to blocked). Completed tasks are not re-opened —
+file a new task instead.
 
 ## Current Sprint
 
 {% if initial_tasks %}
 {% for task in initial_tasks %}
-- [ ] {{ task }}
+- [ ] TASK-{{ '%03d' % (loop.index) }} | TYPE: feature | SCOPE: medium | OWNER: agent
+  - {{ task }}
 {% endfor %}
 {% else %}
-- [ ] Review project goals and begin implementation
+- [ ] TASK-001 | TYPE: feature | SCOPE: medium | OWNER: agent
+  - Review project goals and begin implementation
 {% endif %}
 
 ## Backlog
@@ -231,36 +341,45 @@ TASKS_TEMPLATE = """\
 (empty)
 """
 
-# log.md template
+# log.md template (v1.3 — tightened per-turn entries)
 LOG_TEMPLATE = """\
 # Session Log — {{ project_name }}
 
-*Append only. Do not edit existing entries.*
+*Append only. Older entries roll into `log_archive/` once the active log exceeds the
+context budget. Full history queryable via `log_index.jsonl`.*
 
 ---
 
-## Entry #0 — {{ timestamp }}
+## Entry #0 — {{ timestamp }} — touched: (init)
+- Did: GECK v1.3 initialized
+- Files: GECK/*
+- State: WAIT
+- Next: Await human confirmation to begin work
+"""
 
-### Summary
-Project initialized. GECK structure created.
+# log_index.jsonl template — Entry #0 line, machine-readable
+LOG_INDEX_TEMPLATE = """\
+{"id":0,"ts":"{{ timestamp }}","tasks":[],"decisions":[],"learnings":[],"files":["GECK/*"],"state":"WAIT","summary":"GECK v1.3 initialized"}
+"""
 
-### Understood Goals
-{% for goal_item in understood_goals %}
-- {{ goal_item }}
-{% endfor %}
+# decisions.md index template
+DECISIONS_INDEX_TEMPLATE = """\
+# Decisions — {{ project_name }}
 
-### Questions/Ambiguities
-None
+*One line per decision record. Drill into the file for rationale.*
+*Append-only. Mark superseded decisions with `(superseded by DECISION-NNN)` instead of deleting.*
 
-### Initial Tasks
-{% for task in initial_tasks %}
-- {{ task }}
-{% endfor %}
+(no decisions yet)
+"""
 
-### Checkpoint
-**Status:** WAIT — Awaiting confirmation to begin work.
+# learnings.md index template
+LEARNINGS_INDEX_TEMPLATE = """\
+# Learnings — {{ project_name }}
 
----
+*One line per learning record. Drill into the file for context.*
+*Append-only. Future sessions read this index to avoid re-stepping on the same rakes.*
+
+(no learnings yet)
 """
 
 # GECK Repor agent instructions template
@@ -366,6 +485,9 @@ class TemplateEngine:
         "env": ENV_TEMPLATE,
         "tasks": TASKS_TEMPLATE,
         "log": LOG_TEMPLATE,
+        "log_index": LOG_INDEX_TEMPLATE,
+        "decisions_index": DECISIONS_INDEX_TEMPLATE,
+        "learnings_index": LEARNINGS_INDEX_TEMPLATE,
         "repor": REPOR_TEMPLATE,
     }
 
