@@ -193,6 +193,26 @@ class TestGECKFolderCreation:
         # web_app profile suggests criteria about state management and user interactions
         assert "State management" in llm_init or "User interactions" in llm_init
 
+    def test_geck_folder_creates_v13_artifacts(self, generator, sample_config, temp_dir):
+        """v1.3 init should create decisions/, learnings/, log_archive/, indexes, log_index.jsonl."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+
+        # Subfolders
+        assert (geck_path / "decisions").is_dir()
+        assert (geck_path / "learnings").is_dir()
+        assert (geck_path / "log_archive").is_dir()
+
+        # Index files
+        assert (geck_path / "decisions.md").exists()
+        assert (geck_path / "learnings.md").exists()
+        assert (geck_path / "log_index.jsonl").exists()
+
+        # log_index.jsonl is parseable JSONL
+        import json
+        line = (geck_path / "log_index.jsonl").read_text(encoding="utf-8").strip().splitlines()[0]
+        record = json.loads(line)
+        assert record["id"] == 0
+
 
 class TestReporIntegration:
     """Integration tests for GECK Repor feature."""

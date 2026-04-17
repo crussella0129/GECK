@@ -362,3 +362,124 @@ class TestGECKGeneratorHelperMethods:
         """_parse_goal_to_bullets should handle empty goal."""
         bullets = generator._parse_goal_to_bullets("")
         assert bullets == ["No goal specified"]
+
+
+class TestGECKv13Features:
+    """Tests for GECK v1.3 additions: typed tasks, decisions, learnings, log index, context budget."""
+
+    def test_default_context_budget_is_medium(self, generator):
+        """DEFAULT_CONTEXT_BUDGET should be 'medium'."""
+        assert generator.DEFAULT_CONTEXT_BUDGET == "medium"
+
+    def test_context_budgets_set(self, generator):
+        """CONTEXT_BUDGETS should expose the three valid tiers."""
+        assert set(generator.CONTEXT_BUDGETS) == {"small", "medium", "large"}
+
+    def test_get_config_template_includes_context_budget(self, generator):
+        """Config template should include context_budget defaulting to medium."""
+        template = generator.get_config_template()
+        assert template.get("context_budget") == "medium"
+
+    def test_validate_config_accepts_valid_context_budget(self, generator, sample_config):
+        """validate_config should accept any of small/medium/large."""
+        for budget in ("small", "medium", "large"):
+            cfg = sample_config.copy()
+            cfg["context_budget"] = budget
+            assert generator.validate_config(cfg) == []
+
+    def test_validate_config_rejects_invalid_context_budget(self, generator, sample_config):
+        """validate_config should reject context_budget outside the allowed set."""
+        cfg = sample_config.copy()
+        cfg["context_budget"] = "huge"
+        errors = generator.validate_config(cfg)
+        assert any("context_budget" in e for e in errors)
+
+    def test_generate_includes_context_budget_field(self, generator, sample_config):
+        """Generated LLM_init.md should expose Context Budget."""
+        cfg = sample_config.copy()
+        cfg["context_budget"] = "large"
+        result = generator.generate(cfg)
+        assert "Context Budget" in result
+        assert "large" in result
+
+    def test_generate_defaults_context_budget_when_missing(self, generator, minimal_config):
+        """Missing context_budget should fall back to medium in output."""
+        result = generator.generate(minimal_config)
+        assert "Context Budget" in result
+        assert "medium" in result
+
+    def test_generate_includes_protocol_version(self, generator, sample_config):
+        """Generated LLM_init.md should declare GECK Protocol v1.3."""
+        result = generator.generate(sample_config)
+        assert "GECK Protocol" in result
+        assert "v1.3" in result
+
+    def test_init_geck_folder_creates_decisions_subfolder(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create decisions/ subfolder."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        assert (geck_path / "decisions").is_dir()
+
+    def test_init_geck_folder_creates_learnings_subfolder(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create learnings/ subfolder."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        assert (geck_path / "learnings").is_dir()
+
+    def test_init_geck_folder_creates_log_archive_subfolder(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create log_archive/ subfolder."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        assert (geck_path / "log_archive").is_dir()
+
+    def test_init_geck_folder_creates_decisions_index(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create decisions.md index file."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        decisions = geck_path / "decisions.md"
+        assert decisions.exists()
+        content = decisions.read_text(encoding="utf-8")
+        assert "Decisions" in content
+        assert sample_config["project_name"] in content
+
+    def test_init_geck_folder_creates_learnings_index(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create learnings.md index file."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        learnings = geck_path / "learnings.md"
+        assert learnings.exists()
+        content = learnings.read_text(encoding="utf-8")
+        assert "Learnings" in content
+        assert sample_config["project_name"] in content
+
+    def test_init_geck_folder_creates_log_index_jsonl(self, generator, sample_config, temp_dir):
+        """init_geck_folder should create log_index.jsonl with Entry #0 line."""
+        import json
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        log_index = geck_path / "log_index.jsonl"
+        assert log_index.exists()
+        first_line = log_index.read_text(encoding="utf-8").strip().splitlines()[0]
+        record = json.loads(first_line)
+        assert record["id"] == 0
+        assert record["state"] == "WAIT"
+
+    def test_init_geck_folder_tasks_uses_typed_format(self, generator, sample_config, temp_dir):
+        """tasks.md should use the TASK-NNN | TYPE | SCOPE | OWNER format."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        tasks_content = (geck_path / "tasks.md").read_text(encoding="utf-8")
+        assert "TASK-001" in tasks_content
+        assert "TYPE:" in tasks_content
+        assert "SCOPE:" in tasks_content
+        assert "OWNER:" in tasks_content
+
+    def test_init_geck_folder_geck_inst_is_v13(self, generator, sample_config, temp_dir):
+        """GECK_Inst.md should declare v1.3 and reference drift check + log_index."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        inst = (geck_path / "GECK_Inst.md").read_text(encoding="utf-8")
+        assert "1.3" in inst
+        assert "Drift Check" in inst
+        assert "log_index.jsonl" in inst
+
+    def test_init_geck_folder_log_uses_tightened_entry(self, generator, sample_config, temp_dir):
+        """log.md Entry #0 should use the tightened v1.3 line format."""
+        geck_path = generator.init_geck_folder(temp_dir, sample_config)
+        log_content = (geck_path / "log.md").read_text(encoding="utf-8")
+        assert "Entry #0" in log_content
+        assert "- Did:" in log_content
+        assert "- State: WAIT" in log_content
+        assert "- Next:" in log_content

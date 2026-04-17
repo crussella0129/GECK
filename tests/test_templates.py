@@ -10,6 +10,9 @@ from geck_generator.core.templates import (
     ENV_TEMPLATE,
     TASKS_TEMPLATE,
     LOG_TEMPLATE,
+    LOG_INDEX_TEMPLATE,
+    DECISIONS_INDEX_TEMPLATE,
+    LEARNINGS_INDEX_TEMPLATE,
     REPOR_TEMPLATE,
 )
 
@@ -29,6 +32,9 @@ class TestTemplateEngine:
         assert "env" in templates
         assert "tasks" in templates
         assert "log" in templates
+        assert "log_index" in templates
+        assert "decisions_index" in templates
+        assert "learnings_index" in templates
         assert "repor" in templates
 
     def test_render_llm_init_template(self, template_engine):
@@ -84,7 +90,7 @@ class TestTemplateEngine:
         assert "3.11.0" in result
 
     def test_render_tasks_template(self, template_engine):
-        """render should produce valid tasks.md content."""
+        """render should produce v1.3 typed tasks.md content."""
         variables = {
             "project_name": "Test",
             "timestamp": "2024-01-01 12:00:00",
@@ -93,22 +99,48 @@ class TestTemplateEngine:
         result = template_engine.render("tasks", variables)
 
         assert "Tasks" in result
-        assert "- [ ] Task 1" in result
-        assert "- [ ] Task 2" in result
+        # v1.3 wraps each task in a TASK-NNN line; description lives on a nested bullet
+        assert "TASK-001" in result
+        assert "TASK-002" in result
+        assert "TYPE: feature" in result
+        assert "Task 1" in result
+        assert "Task 2" in result
 
     def test_render_log_template(self, template_engine):
-        """render should produce valid log.md content."""
+        """render should produce v1.3 tightened log.md content."""
         variables = {
             "project_name": "Test",
             "timestamp": "2024-01-01 12:00:00",
-            "understood_goals": ["Goal 1", "Goal 2"],
-            "initial_tasks": ["Task 1"],
         }
         result = template_engine.render("log", variables)
 
         assert "Session Log" in result
         assert "Entry #0" in result
-        assert "Goal 1" in result
+        assert "- Did:" in result
+        assert "- State: WAIT" in result
+        assert "- Next:" in result
+
+    def test_render_log_index_template(self, template_engine):
+        """render should produce a single JSONL line for Entry #0."""
+        import json
+        result = template_engine.render("log_index", {"timestamp": "2026-04-17T14:00:00"})
+        line = result.strip().splitlines()[0]
+        record = json.loads(line)
+        assert record["id"] == 0
+        assert record["state"] == "WAIT"
+        assert record["ts"] == "2026-04-17T14:00:00"
+
+    def test_render_decisions_index_template(self, template_engine):
+        """decisions_index template should render with project name."""
+        result = template_engine.render("decisions_index", {"project_name": "Test"})
+        assert "Decisions — Test" in result
+        assert "no decisions yet" in result.lower()
+
+    def test_render_learnings_index_template(self, template_engine):
+        """learnings_index template should render with project name."""
+        result = template_engine.render("learnings_index", {"project_name": "Test"})
+        assert "Learnings — Test" in result
+        assert "no learnings yet" in result.lower()
 
     def test_render_repor_template(self, template_engine):
         """render should produce valid repor instructions."""
@@ -200,10 +232,41 @@ class TestTemplateConstants:
         assert "Backlog" in TASKS_TEMPLATE
 
     def test_log_template_has_required_sections(self):
-        """LOG_TEMPLATE should have required sections."""
+        """LOG_TEMPLATE should have required v1.3 entry fields."""
         assert "Session Log" in LOG_TEMPLATE
         assert "Entry #0" in LOG_TEMPLATE
-        assert "Checkpoint" in LOG_TEMPLATE
+        assert "- Did:" in LOG_TEMPLATE
+        assert "- State:" in LOG_TEMPLATE
+        assert "- Next:" in LOG_TEMPLATE
+
+    def test_log_index_template_is_jsonl(self):
+        """LOG_INDEX_TEMPLATE should be a single JSON object on one line."""
+        import json
+        # The template uses jinja {{ timestamp }}; substitute and parse.
+        rendered = LOG_INDEX_TEMPLATE.replace("{{ timestamp }}", "2026-04-17T00:00:00")
+        line = rendered.strip().splitlines()[0]
+        record = json.loads(line)
+        assert "id" in record and "tasks" in record and "decisions" in record
+
+    def test_decisions_index_template_has_header(self):
+        """DECISIONS_INDEX_TEMPLATE should include the heading and instructions."""
+        assert "Decisions —" in DECISIONS_INDEX_TEMPLATE
+        assert "Append-only" in DECISIONS_INDEX_TEMPLATE
+
+    def test_learnings_index_template_has_header(self):
+        """LEARNINGS_INDEX_TEMPLATE should include the heading and instructions."""
+        assert "Learnings —" in LEARNINGS_INDEX_TEMPLATE
+        assert "Append-only" in LEARNINGS_INDEX_TEMPLATE
+
+    def test_geck_inst_template_declares_v13(self):
+        """GECK_INST_TEMPLATE should declare protocol v1.3."""
+        assert "1.3" in GECK_INST_TEMPLATE
+        assert "Drift Check" in GECK_INST_TEMPLATE
+        assert "log_index.jsonl" in GECK_INST_TEMPLATE
+
+    def test_llm_init_template_includes_context_budget(self):
+        """LLM_INIT_TEMPLATE should expose the Context Budget field."""
+        assert "Context Budget" in LLM_INIT_TEMPLATE
 
     def test_repor_template_has_required_sections(self):
         """REPOR_TEMPLATE should have required sections."""
