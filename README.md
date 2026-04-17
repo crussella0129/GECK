@@ -222,7 +222,7 @@ Read the last log entry and remind me where we left off.
 | v1.1 | Stable | Work modes, simplified file names |
 | v1.0 | Legacy | Initial release |
 
-See `GECK/GECK_Macro_v1.2` for the full protocol specification.
+See `GECK/GECK_Macro_v1.2.md` for the full protocol specification.
 
 ---
 
