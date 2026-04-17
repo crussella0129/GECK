@@ -1,0 +1,16 @@
+[package]
+name = "geck-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line interface for the GECK protocol toolchain"
+
+[[bin]]
+name = "geck"
+path = "src/main.rs"
+
+[dependencies]
+geck-core.workspace = true
+clap.workspace = true
