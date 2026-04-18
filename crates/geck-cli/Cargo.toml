@@ -14,3 +14,4 @@ path = "src/main.rs"
 [dependencies]
 geck-core.workspace = true
 clap.workspace = true
+serde_json.workspace = true

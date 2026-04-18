@@ -259,6 +259,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "geck-core",
+ "serde_json",
 ]
 
 [[package]]
