@@ -1,0 +1,16 @@
+[package]
+name = "geck-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core library for the GECK protocol: parsers, templates, scaffold, validation"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tera.workspace = true
+chrono.workspace = true
+thiserror.workspace = true

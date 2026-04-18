@@ -122,3 +122,10 @@ TODO.txt
 output/
 generated/
 *.generated.md
+
+# Rust / Cargo
+/target/
+**/target/
+# Dev-local cargo config (paths to user sysroot / custom linker wrappers).
+# Standard machines with build-essential installed don't need this file.
+/.cargo/config.toml

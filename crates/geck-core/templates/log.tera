@@ -1,0 +1,12 @@
+# Session Log — {{ project_name }}
+
+*Append only. Older entries roll into `log_archive/` once the active log exceeds the
+context budget. Full history queryable via `log_index.jsonl`.*
+
+---
+
+## Entry #0 — {{ timestamp }} — touched: (init)
+- Did: GECK v1.3 initialized
+- Files: GECK/*
+- State: WAIT
+- Next: Await human confirmation to begin work

@@ -5,7 +5,8 @@ A tool for generating macro-prompts, as well as a GitHub Repo framework, for use
 ## Contents
 
 - **GECK/** - The Garden of Eden Creation Kit protocol specifications (v1.0, v1.1, v1.2, v1.3)
-- **geck_generator/** - A GUI/CLI tool to generate GECK project files
+- **geck_generator/** - A GUI/CLI tool to generate GECK project files (Python reference implementation)
+- **crates/** - Rust workspace hosting `geck-core` (library) and `geck-cli` (the `geck` binary)
 
 ---
 
@@ -147,6 +148,63 @@ python -m geck_generator --profile web_app --project-name "My App" --goal "Build
 
 ---
 
+## Rust Toolchain (`geck` binary)
+
+A second, native implementation of the generator lives under `crates/`. It
+ships as a single `geck` binary, targets the same v1.3 protocol, and
+produces output byte-equivalent to the Python generator (see
+`scripts/check_parity.sh`).
+
+### Build
+
+```bash
+cargo build --release --bin geck
+# target/release/geck (or target/<triple>/release/geck)
+```
+
+### Commands
+
+```bash
+# Protocol version this binary targets
+geck protocol-version
+
+# List preset profiles (same registry as the Python tool)
+geck list-profiles
+geck list-profiles --json
+
+# List built-in templates
+geck list-templates
+
+# Render an LLM_init.md from flags to stdout
+geck generate \
+    --project-name "My App" \
+    --goal "Build a REST API" \
+    --profile api
+
+# Scaffold a full GECK/ folder in a project directory
+geck init ./my_project \
+    --project-name "My App" \
+    --goal "Build a REST API" \
+    --profile api
+```
+
+### Cross-tool parity
+
+`scripts/check_parity.sh` scaffolds the same project through both the
+Python generator and the `geck` binary and asserts that every
+deterministic piece of output (file tree, `log_index.jsonl` record,
+`GECK_Inst.md`, task lines, `LLM_init.md` modulo the Created-date line,
+and the empty decisions/learnings indexes) matches. Run it any time you
+touch templates or scaffold logic on either side.
+
+### Why two implementations?
+
+Python remains the reference (and the home of the GUI). Rust gives a
+zero-runtime-dependency CLI and a library (`geck-core`) that other Rust
+tools — e.g. a future GECK editor — can embed directly.
+
+---
+
 ## Using GECK with CLI LLM Agents
 
 ### Initial Setup
@@ -245,6 +303,7 @@ v1.3 sharpens the protocol around how a fresh agent reconstructs context across 
 
 ## Requirements
 
+**Python generator (GUI + CLI + parity-reference):**
 - Python 3.10+
 - tkinter (usually included with Python)
 - jinja2
@@ -253,6 +312,14 @@ v1.3 sharpens the protocol around how a fresh agent reconstructs context across 
 Install with:
 ```bash
 pip install -r requirements.txt
+```
+
+**Rust `geck` binary (optional, native CLI):**
+- Rust 1.75+ (stable)
+
+Build with:
+```bash
+cargo build --release --bin geck
 ```
 
 ---
