@@ -1,5 +1,7 @@
 //! `geck` — CLI front-end for the GECK protocol toolchain.
 
+mod wizard;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -36,7 +38,8 @@ enum Commands {
     /// List all built-in templates.
     ListTemplates,
 
-    /// Render an LLM_init.md from flags to stdout (or `--output`).
+    /// Render an LLM_init.md from flags to stdout, or launch the interactive
+    /// wizard when called with no other arguments.
     Generate(GenerateArgs),
 
     /// Scaffold a full GECK/ folder in the given project directory.
@@ -45,13 +48,14 @@ enum Commands {
 
 #[derive(clap::Args, Debug)]
 struct GenerateArgs {
-    /// Project name (title of the generated LLM_init.md).
+    /// Project name. Omit together with `--goal` to launch the wizard.
     #[arg(long)]
-    project_name: String,
+    project_name: Option<String>,
 
-    /// One-line goal for the project.
+    /// One-line goal for the project. Omit together with `--project-name` to
+    /// launch the wizard.
     #[arg(long)]
-    goal: String,
+    goal: Option<String>,
 
     /// Preset profile to merge into the config (e.g. `cli_tool`).
     #[arg(long)]
@@ -166,9 +170,42 @@ fn run_list_templates() -> ExitCode {
 }
 
 fn run_generate(args: GenerateArgs) -> ExitCode {
+    // If neither project-name nor goal was supplied, launch the wizard.
+    // Any non-default arg forces the non-interactive path and errors if
+    // project-name/goal are still missing.
+    let has_other_args = args.profile.is_some()
+        || !args.criteria.is_empty()
+        || !args.frameworks.is_empty()
+        || !args.platforms.is_empty()
+        || args.languages.is_some()
+        || args.must_use.is_some()
+        || args.must_avoid.is_some()
+        || args.context_budget != "medium"
+        || args.output.is_some();
+
+    if args.project_name.is_none() && args.goal.is_none() && !has_other_args {
+        return match wizard::run() {
+            Ok(wizard::WizardOutcome::Cancelled) => {
+                println!("wizard cancelled — nothing written");
+                ExitCode::SUCCESS
+            }
+            Ok(_) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("geck: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    let (Some(project_name), Some(goal)) = (args.project_name, args.goal) else {
+        eprintln!("geck: --project-name and --goal are required in non-interactive mode");
+        eprintln!("       (omit both to launch the interactive wizard)");
+        return ExitCode::FAILURE;
+    };
+
     let mut config = InitConfig {
-        project_name: Some(args.project_name),
-        goal: Some(args.goal),
+        project_name: Some(project_name),
+        goal: Some(goal),
         success_criteria: args.criteria,
         frameworks: args.frameworks,
         platforms: args.platforms,

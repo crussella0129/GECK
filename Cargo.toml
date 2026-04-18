@@ -22,3 +22,4 @@ tera = { version = "1", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 thiserror = "1"
 clap = { version = "4", features = ["derive"] }
+inquire = "0.7"
