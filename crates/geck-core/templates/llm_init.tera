@@ -1,0 +1,33 @@
+# Project: {{ project_name }}
+
+**Repository:** {% if repo_url %}{{ repo_url }}{% else %}Not specified{% endif %}
+**Local Path:** {% if local_path %}{{ local_path }}{% else %}Not specified{% endif %}
+{% if git_branch %}**Branch:** {{ git_branch }}
+{% endif %}**Created:** {{ created_date }}
+**GECK Protocol:** v1.3
+**Context Budget:** {% if context_budget %}{{ context_budget }}{% else %}medium{% endif %}
+
+## Goal
+
+{{ goal }}
+
+## Success Criteria
+
+{% for criterion in success_criteria -%}
+- [ ] {{ criterion }}
+{% endfor %}
+## Constraints
+
+- **Languages:** {% if languages %}{{ languages }}{% else %}Not specified{% endif %}
+- **Frameworks:** {% if frameworks %}{{ frameworks | join(sep=", ") }}{% else %}Not specified{% endif %}
+- **Must use:** {% if must_use %}{{ must_use }}{% else %}None specified{% endif %}
+- **Must avoid:** {% if must_avoid %}{{ must_avoid }}{% else %}None specified{% endif %}
+- **Target platforms:** {% if platforms %}{{ platforms | join(sep=", ") }}{% else %}Not specified{% endif %}
+
+## Context
+
+{% if context %}{{ context }}{% else %}No additional context provided.{% endif %}
+
+## Initial Task
+
+{% if initial_task %}{{ initial_task }}{% else %}Begin implementation based on the goal and success criteria above.{% endif %}
