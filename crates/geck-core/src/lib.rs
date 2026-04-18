@@ -13,6 +13,7 @@ pub mod tasks;
 pub mod log_index;
 pub mod decisions;
 pub mod learnings;
+pub mod frontmatter;
 pub mod templates;
 pub mod profiles;
 pub mod scaffold;

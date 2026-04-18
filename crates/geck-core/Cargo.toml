@@ -10,7 +10,7 @@ description = "Core library for the GECK protocol: parsers, templates, scaffold,
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 tera.workspace = true
-gray_matter.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
