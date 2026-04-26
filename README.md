@@ -42,7 +42,7 @@ your_project/
     └── log_archive/        # Rolled-over log entries
 ```
 
-At the start of each session, you point the AI to these files. It reads only the slice it needs (driven by the declared **Context Budget**), understands what was done before, and continues where it left off.
+You then add instructions to your project or global Claude.md, or similar harness initialization (depending on how much you use GECK), to access the GECK folder, review the most recent log.md entries, review the tasks.md, and begin work at the start of each session. It reads only the slice it needs (driven by the declared **Context Budget**), understands what was done before, and continues where it left off.
 
 ---
 
