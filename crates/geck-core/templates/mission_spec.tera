@@ -1,0 +1,63 @@
+
+# Mission: {{ project_name }}
+
+## Goal
+
+{{ goal }}
+
+## Success Criteria
+
+Mission-level definition of done. Checked off across sprints, not per-sprint.
+
+{% for c in success_criteria -%}
+- [ ] {{ c }}
+{% endfor %}
+## Non-Goals
+
+Explicit exclusions — the anti-drift fence.
+
+{% if non_goals | length > 0 -%}
+{% for n in non_goals -%}
+- {{ n }}
+{% endfor -%}
+{% else -%}
+(none declared)
+{% endif %}
+## Constraints
+
+- **Languages:** {% if languages %}{{ languages }}{% else %}Not specified{% endif %}
+
+- **Frameworks:** {% if frameworks | length > 0 %}{{ frameworks | join(sep=", ") }}{% else %}Not specified{% endif %}
+
+- **Platforms:** {% if platforms | length > 0 %}{{ platforms | join(sep=", ") }}{% else %}Not specified{% endif %}
+
+- **Must use:** {% if must_use %}{{ must_use }}{% else %}None specified{% endif %}
+
+- **Must avoid:** {% if must_avoid %}{{ must_avoid }}{% else %}None specified{% endif %}
+
+## Working Agreement
+
+- **Merge mode:** {{ merge_mode }} — {% if merge_mode == "auto" %}merge on green CI proceeds autonomously once the consequence is known and reversible.{% else %}a human approves each sprint's PR before it merges.{% endif %}
+- **Work branch:** {{ work_branch }}
+{% for note in working_agreement_notes -%}
+- {{ note }}
+{% endfor %}
+## Sprint 0 Charter
+
+{{ sprint_zero_charter }}
+
+## Backlog Seeds
+
+{% if backlog_seeds | length > 0 -%}
+{% for seed in backlog_seeds -%}
+- {{ seed }}
+{% endfor -%}
+{% else -%}
+(none seeded)
+{% endif %}
+## Amendment Protocol
+
+This file is amended by humans only. Agents proposing a change record an ADR
+in `decisions.md` referencing the relevant section; the spec itself is edited
+by the human. Each sprint's Research Phase re-reads this file and reports
+drift.

@@ -687,57 +687,5 @@
         "blockchain"
       ]
     }
-  },
-  "repor_profiles": {
-    "feature_discovery": {
-      "name": "Feature Discovery",
-      "description": "Find reusable components and patterns",
-      "goals": [
-        "Identify reusable utility functions",
-        "Find well-documented APIs",
-        "Locate configurable components",
-        "Discover extensible patterns"
-      ]
-    },
-    "performance_optimization": {
-      "name": "Performance Optimization",
-      "description": "Identify performance patterns",
-      "goals": [
-        "Find caching implementations",
-        "Locate async/concurrent patterns",
-        "Identify optimization techniques",
-        "Discover efficient algorithms"
-      ]
-    },
-    "security_audit": {
-      "name": "Security Audit",
-      "description": "Look for security patterns and practices",
-      "goals": [
-        "Find authentication implementations",
-        "Locate input validation patterns",
-        "Identify secure configuration practices",
-        "Discover access control mechanisms"
-      ]
-    },
-    "testing_patterns": {
-      "name": "Testing Patterns",
-      "description": "Find testing strategies and coverage",
-      "goals": [
-        "Identify testing frameworks used",
-        "Find mock/stub patterns",
-        "Locate integration test setups",
-        "Discover test organization patterns"
-      ]
-    },
-    "architecture_review": {
-      "name": "Architecture Review",
-      "description": "Analyze code organization",
-      "goals": [
-        "Identify architectural patterns (MVC, etc.)",
-        "Find module organization patterns",
-        "Locate dependency injection usage",
-        "Discover error handling strategies"
-      ]
-    }
   }
 }

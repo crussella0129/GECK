@@ -1,4 +1,8 @@
-# GECK Project Log
+# Animus Research Notes
+
+Carried over from GECK's old root-level `log.md`, written when GECK was still
+the project's memory protocol. Preserved here as Animus research history, not
+as GECK documentation — GECK itself no longer keeps a running log.
 
 ---
 

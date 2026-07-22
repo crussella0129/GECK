@@ -1,1 +1,0 @@
-# GECK Generator Test Suite

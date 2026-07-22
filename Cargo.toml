@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 license = "See LICENSE"
-repository = "https://github.com/crussella0129/GECK"
+repository = "https://github.com/crussella0129/Animus_GECK"
 
 [workspace.dependencies]
 geck-core = { path = "crates/geck-core", version = "0.1.0" }
