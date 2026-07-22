@@ -1,78 +1,157 @@
-//! Interactive `geck generate` wizard.
+//! Interactive `geck launch` wizard.
 //!
 //! Main-menu-driven: every section is visible on the menu at all times, and
 //! the user edits them in any order. The menu also exposes Preview and Save
 //! entries, so the flow is fully non-linear: hop between sections until
-//! satisfied, preview, save.
+//! satisfied, preview both artifacts, save.
 
 use std::path::PathBuf;
 
 use inquire::{Confirm, MultiSelect, Select, Text};
 
 use geck_core::profiles::ProfileManager;
-use geck_core::scaffold::{self, InitConfig};
-use geck_core::templates::{RenderContext, TemplateEngine};
+use geck_core::scaffold::{self, BacklogSeed};
+use geck_core::spec::{self, Harness, MergeMode, MissionSpec, SpecFrontmatter};
 
-const PLATFORMS: &[&str] = &["Windows", "macOS", "Linux", "Docker", "iOS", "Android", "Web"];
-const BUDGETS: &[&str] = &["small", "medium", "large"];
+const PLATFORMS: &[&str] = &[
+    "Windows", "macOS", "Linux", "Docker", "iOS", "Android", "Web",
+];
+const HARNESSES: &[(Harness, &str, &str)] = &[
+    (
+        Harness::ClaudeCode,
+        "claude-code",
+        "Anthropic Claude Code (plugin marketplace)",
+    ),
+    (
+        Harness::CodexCli,
+        "codex-cli",
+        "OpenAI Codex CLI (skill bundle)",
+    ),
+    (
+        Harness::OpenHarness,
+        "open-harness",
+        "OpenClaw, OpenCode, custom runners",
+    ),
+    (Harness::Antigravity, "antigravity", "Antigravity IDE"),
+];
+const MERGE_MODES: &[(MergeMode, &str, &str)] = &[
+    (
+        MergeMode::Approve,
+        "approve",
+        "a human approves each sprint's PR before merge (safer default)",
+    ),
+    (
+        MergeMode::Auto,
+        "auto",
+        "merge on green CI proceeds autonomously (faster, less oversight)",
+    ),
+];
 
-/// Interactive state the wizard edits. Mirrors the fields the Python wizard
-/// collects, plus a chosen profile key.
-#[derive(Debug, Default, Clone)]
+/// Interactive state the wizard edits.
+#[derive(Debug, Clone)]
 pub struct WizardState {
     pub project_name: Option<String>,
     pub local_path: Option<String>,
     pub repo_url: Option<String>,
     pub profile: Option<String>,
     pub goal: Option<String>,
-    pub context: Option<String>,
     pub success_criteria: Vec<String>,
+    pub non_goals: Vec<String>,
     pub languages: Option<String>,
     pub must_use: Option<String>,
     pub must_avoid: Option<String>,
     pub platforms: Vec<String>,
-    pub initial_task: Option<String>,
-    pub context_budget: String,
+    pub harness: Harness,
+    pub merge_mode: MergeMode,
+    pub work_branch: String,
+    pub sprint_zero_charter: Option<String>,
+    pub backlog_seeds: Vec<String>,
+    pub working_agreement_notes: Vec<String>,
+    pub seed: bool,
 }
 
 impl WizardState {
     pub fn new() -> Self {
         Self {
-            context_budget: "medium".to_string(),
-            ..Default::default()
+            project_name: None,
+            local_path: None,
+            repo_url: None,
+            profile: None,
+            goal: None,
+            success_criteria: Vec::new(),
+            non_goals: Vec::new(),
+            languages: None,
+            must_use: None,
+            must_avoid: None,
+            platforms: Vec::new(),
+            harness: Harness::ClaudeCode,
+            merge_mode: MergeMode::Approve,
+            work_branch: "dev".to_string(),
+            sprint_zero_charter: None,
+            backlog_seeds: Vec::new(),
+            working_agreement_notes: Vec::new(),
+            seed: true,
         }
     }
 
-    fn to_config(&self) -> InitConfig {
-        InitConfig {
-            project_name: self.project_name.clone(),
-            repo_url: self.repo_url.clone(),
-            local_path: self.local_path.clone(),
-            goal: self.goal.clone(),
+    fn to_spec(&self, profiles: &ProfileManager, created_date: &str) -> MissionSpec {
+        let mut spec = MissionSpec {
+            frontmatter: SpecFrontmatter {
+                geck: geck_core::SPEC_VERSION.to_string(),
+                project: self
+                    .project_name
+                    .clone()
+                    .unwrap_or_else(|| "Untitled Project".into()),
+                created: created_date.to_string(),
+                profile: self.profile.clone(),
+                harness: self.harness,
+                merge_mode: self.merge_mode,
+                work_branch: self.work_branch.clone(),
+                repo: self.repo_url.clone(),
+                sprint_loops_ref: Some(created_date.to_string()),
+            },
+            goal: self
+                .goal
+                .clone()
+                .unwrap_or_else(|| "No goal specified.".into()),
             success_criteria: self.success_criteria.clone(),
+            non_goals: self.non_goals.clone(),
             languages: self.languages.clone(),
             frameworks: Vec::new(),
+            platforms: self.platforms.clone(),
             must_use: self.must_use.clone(),
             must_avoid: self.must_avoid.clone(),
-            platforms: self.platforms.clone(),
-            context: self.context.clone(),
-            initial_task: self.initial_task.clone(),
-            context_budget: Some(self.context_budget.clone()),
-            ..Default::default()
+            working_agreement_notes: self.working_agreement_notes.clone(),
+            sprint_zero_charter: self.sprint_zero_charter.clone().unwrap_or_else(|| {
+                "Research the existing codebase and confirm the approach in mission-spec.md.".into()
+            }),
+            backlog_seeds: self.backlog_seeds.clone(),
+        };
+        // Frameworks aren't user-edited directly — they come from the profile.
+        if let Some(key) = &self.profile {
+            if let Ok(p) = profiles.get(key) {
+                spec.frameworks = p.frameworks.clone();
+            }
         }
+        spec
+    }
+}
+
+impl Default for WizardState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 pub enum WizardOutcome {
-    WroteLlmInit(PathBuf),
-    Scaffolded(PathBuf),
+    Launched(PathBuf),
     Cancelled,
 }
 
 pub fn run() -> Result<WizardOutcome, WizardError> {
     println!();
     println!("============================================================");
-    println!("  GECK Generator — Interactive Wizard");
+    println!("  GECK — Sprint Zero Launcher");
     println!("============================================================");
     println!();
 
@@ -82,7 +161,7 @@ pub fn run() -> Result<WizardOutcome, WizardError> {
     loop {
         let menu = build_menu(&state);
         let choice = Select::new("Edit a section, preview, or save:", menu)
-            .with_page_size(20)
+            .with_page_size(22)
             .prompt_skippable()?;
         let Some(choice) = choice else {
             return Ok(WizardOutcome::Cancelled);
@@ -94,14 +173,21 @@ pub fn run() -> Result<WizardOutcome, WizardError> {
             Action::RepoUrl => edit_repo_url(&mut state)?,
             Action::Profile => edit_profile(&mut state, &profiles)?,
             Action::Goal => edit_goal(&mut state)?,
-            Action::Context => edit_context(&mut state)?,
             Action::SuccessCriteria => edit_success_criteria(&mut state, &profiles)?,
+            Action::NonGoals => edit_string_list(&mut state.non_goals, "non-goal")?,
             Action::Languages => edit_languages(&mut state, &profiles)?,
             Action::MustUse => edit_must_use(&mut state, &profiles)?,
             Action::MustAvoid => edit_must_avoid(&mut state, &profiles)?,
             Action::Platforms => edit_platforms(&mut state, &profiles)?,
-            Action::InitialTask => edit_initial_task(&mut state)?,
-            Action::ContextBudget => edit_context_budget(&mut state)?,
+            Action::Harness => edit_harness(&mut state)?,
+            Action::MergeMode => edit_merge_mode(&mut state)?,
+            Action::WorkBranch => edit_work_branch(&mut state)?,
+            Action::SprintZeroCharter => edit_sprint_zero_charter(&mut state)?,
+            Action::BacklogSeeds => edit_string_list(&mut state.backlog_seeds, "backlog seed")?,
+            Action::WorkingAgreementNotes => {
+                edit_string_list(&mut state.working_agreement_notes, "extra stop-checkpoint")?
+            }
+            Action::ToggleSeed => state.seed = !state.seed,
             Action::Preview => show_preview(&state, &profiles)?,
             Action::Save => {
                 if let Some(outcome) = save(&state, &profiles)? {
@@ -120,14 +206,19 @@ enum Action {
     RepoUrl,
     Profile,
     Goal,
-    Context,
     SuccessCriteria,
+    NonGoals,
     Languages,
     MustUse,
     MustAvoid,
     Platforms,
-    InitialTask,
-    ContextBudget,
+    Harness,
+    MergeMode,
+    WorkBranch,
+    SprintZeroCharter,
+    BacklogSeeds,
+    WorkingAgreementNotes,
+    ToggleSeed,
     Preview,
     Save,
     Quit,
@@ -163,15 +254,21 @@ fn build_menu(state: &WizardState) -> Vec<MenuItem> {
 
     items.push(MenuItem {
         label: format!(
-            "[{}] Project name        — {}",
-            mark(state.project_name.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Project name          — {}",
+            mark(
+                state
+                    .project_name
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.project_name)
         ),
         action: Action::ProjectName,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Local path          — {}",
+            "[{}] Local path            — {}",
             mark(state.local_path.is_some()),
             summarize_opt(&state.local_path)
         ),
@@ -179,15 +276,21 @@ fn build_menu(state: &WizardState) -> Vec<MenuItem> {
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Repository URL      — {}",
-            mark(state.repo_url.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Repository URL        — {}",
+            mark(
+                state
+                    .repo_url
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.repo_url)
         ),
         action: Action::RepoUrl,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Profile             — {}",
+            "[{}] Profile               — {}",
             mark(state.profile.is_some()),
             state.profile.clone().unwrap_or_else(|| "(none)".into())
         ),
@@ -195,23 +298,21 @@ fn build_menu(state: &WizardState) -> Vec<MenuItem> {
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Goal                — {}",
-            mark(state.goal.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Goal                  — {}",
+            mark(
+                state
+                    .goal
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.goal)
         ),
         action: Action::Goal,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Context             — {}",
-            mark(state.context.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
-            summarize_opt(&state.context)
-        ),
-        action: Action::Context,
-    });
-    items.push(MenuItem {
-        label: format!(
-            "[{}] Success criteria    — {}",
+            "[{}] Success criteria      — {}",
             mark(!state.success_criteria.is_empty()),
             summarize_list(&state.success_criteria)
         ),
@@ -219,31 +320,57 @@ fn build_menu(state: &WizardState) -> Vec<MenuItem> {
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Languages           — {}",
-            mark(state.languages.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Non-goals             — {}",
+            mark(!state.non_goals.is_empty()),
+            summarize_list(&state.non_goals)
+        ),
+        action: Action::NonGoals,
+    });
+    items.push(MenuItem {
+        label: format!(
+            "[{}] Languages             — {}",
+            mark(
+                state
+                    .languages
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.languages)
         ),
         action: Action::Languages,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Must use            — {}",
-            mark(state.must_use.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Must use              — {}",
+            mark(
+                state
+                    .must_use
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.must_use)
         ),
         action: Action::MustUse,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Must avoid          — {}",
-            mark(state.must_avoid.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
+            "[{}] Must avoid            — {}",
+            mark(
+                state
+                    .must_avoid
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
             summarize_opt(&state.must_avoid)
         ),
         action: Action::MustAvoid,
     });
     items.push(MenuItem {
         label: format!(
-            "[{}] Platforms           — {}",
+            "[{}] Platforms             — {}",
             mark(!state.platforms.is_empty()),
             if state.platforms.is_empty() {
                 "(none)".to_string()
@@ -254,22 +381,56 @@ fn build_menu(state: &WizardState) -> Vec<MenuItem> {
         action: Action::Platforms,
     });
     items.push(MenuItem {
-        label: format!(
-            "[{}] Initial task        — {}",
-            mark(state.initial_task.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())),
-            summarize_opt(&state.initial_task)
-        ),
-        action: Action::InitialTask,
+        label: format!("[✓] Harness (agent runtime) — {}", state.harness),
+        action: Action::Harness,
+    });
+    items.push(MenuItem {
+        label: format!("[✓] Merge mode          — {}", state.merge_mode),
+        action: Action::MergeMode,
+    });
+    items.push(MenuItem {
+        label: format!("[✓] Work branch         — {}", state.work_branch),
+        action: Action::WorkBranch,
     });
     items.push(MenuItem {
         label: format!(
-            "[✓] Context budget       — {}",
-            state.context_budget
+            "[{}] Sprint 0 charter      — {}",
+            mark(
+                state
+                    .sprint_zero_charter
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|s| !s.is_empty())
+            ),
+            summarize_opt(&state.sprint_zero_charter)
         ),
-        action: Action::ContextBudget,
+        action: Action::SprintZeroCharter,
     });
     items.push(MenuItem {
-        label: "────────  Preview LLM_init.md".to_string(),
+        label: format!(
+            "[{}] Backlog seeds         — {}",
+            mark(!state.backlog_seeds.is_empty()),
+            summarize_list(&state.backlog_seeds)
+        ),
+        action: Action::BacklogSeeds,
+    });
+    items.push(MenuItem {
+        label: format!(
+            "[{}] Extra stop-checkpoints — {}",
+            mark(!state.working_agreement_notes.is_empty()),
+            summarize_list(&state.working_agreement_notes)
+        ),
+        action: Action::WorkingAgreementNotes,
+    });
+    items.push(MenuItem {
+        label: format!(
+            "[{}] Seed project (ADR-000 + backlog + confidence.txt)",
+            mark(state.seed)
+        ),
+        action: Action::ToggleSeed,
+    });
+    items.push(MenuItem {
+        label: "────────  Preview mission-spec.md + launch-prompt.md".to_string(),
         action: Action::Preview,
     });
     items.push(MenuItem {
@@ -289,7 +450,11 @@ fn edit_project_name(state: &mut WizardState) -> Result<(), WizardError> {
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.project_name = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.project_name = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -305,7 +470,24 @@ fn edit_local_path(state: &mut WizardState) -> Result<(), WizardError> {
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.local_path = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.local_path = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+        // Auto-detect repo URL / work branch from git, without overwriting
+        // anything the user already typed in explicitly.
+        if let Some(path) = &state.local_path {
+            let env = scaffold::detect_environment(std::path::Path::new(path));
+            if state.repo_url.is_none() {
+                state.repo_url = env.git_remote;
+            }
+            if state.work_branch == "dev" {
+                if let Some(b) = env.git_branch {
+                    state.work_branch = b;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -316,7 +498,11 @@ fn edit_repo_url(state: &mut WizardState) -> Result<(), WizardError> {
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.repo_url = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.repo_url = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -332,7 +518,12 @@ fn edit_profile(state: &mut WizardState, profiles: &ProfileManager) -> Result<()
     let cur_label = state
         .profile
         .as_ref()
-        .and_then(|k| options.iter().find(|o| o.starts_with(&format!("{k} —"))).cloned())
+        .and_then(|k| {
+            options
+                .iter()
+                .find(|o| o.starts_with(&format!("{k} —")))
+                .cloned()
+        })
         .unwrap_or_else(|| "(none)".to_string());
     let starting_cursor = options.iter().position(|o| o == &cur_label).unwrap_or(0);
 
@@ -349,8 +540,7 @@ fn edit_profile(state: &mut WizardState, profiles: &ProfileManager) -> Result<()
     let key = pick.split_once(" — ").map(|(k, _)| k.to_string());
     if let Some(key) = key {
         state.profile = Some(key.clone());
-        // Offer to backfill empty fields from the profile.
-        let prefill = Confirm::new("Pre-fill empty fields (languages, frameworks, platforms, criteria, must-use, must-avoid) from this profile?")
+        let prefill = Confirm::new("Pre-fill empty fields (languages, platforms, criteria, must-use, must-avoid) from this profile?")
             .with_default(true)
             .prompt_skippable()?
             .unwrap_or(false);
@@ -377,23 +567,16 @@ fn edit_profile(state: &mut WizardState, profiles: &ProfileManager) -> Result<()
 }
 
 fn edit_goal(state: &mut WizardState) -> Result<(), WizardError> {
-    let val = Text::new("Goal (one-line summary of what should exist when done):")
+    let val = Text::new("Goal (the full mission — not a one-liner):")
         .with_default(state.goal.as_deref().unwrap_or(""))
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.goal = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
-    }
-    Ok(())
-}
-
-fn edit_context(state: &mut WizardState) -> Result<(), WizardError> {
-    let val = Text::new("Additional context (optional):")
-        .with_default(state.context.as_deref().unwrap_or(""))
-        .prompt_skippable()?;
-    if let Some(v) = val {
-        let trimmed = v.trim();
-        state.context = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.goal = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -403,18 +586,7 @@ fn edit_success_criteria(
     profiles: &ProfileManager,
 ) -> Result<(), WizardError> {
     loop {
-        let current = if state.success_criteria.is_empty() {
-            "  (none)".to_string()
-        } else {
-            state
-                .success_criteria
-                .iter()
-                .enumerate()
-                .map(|(i, c)| format!("  {}. {}", i + 1, c))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        println!("\nCurrent criteria:\n{current}\n");
+        print_current_list("Current criteria", &state.success_criteria);
 
         let mut options = vec!["Add criterion".to_string()];
         if !state.success_criteria.is_empty() {
@@ -444,9 +616,7 @@ fn edit_success_criteria(
                     state.success_criteria.retain(|c| c != &item);
                 }
             }
-            "Clear all" => {
-                state.success_criteria.clear();
-            }
+            "Clear all" => state.success_criteria.clear(),
             "Replace with profile's suggested criteria" => {
                 if let Some(key) = &state.profile {
                     state.success_criteria = profiles.get(key)?.suggested_criteria.clone();
@@ -456,6 +626,55 @@ fn edit_success_criteria(
             _ => {}
         }
     }
+}
+
+/// Generic repeating list editor for non-goals, backlog seeds, and extra
+/// stop-checkpoints — sections with no profile-suggested defaults.
+fn edit_string_list(list: &mut Vec<String>, noun: &str) -> Result<(), WizardError> {
+    loop {
+        print_current_list(&format!("Current {noun}s"), list);
+
+        let mut options = vec![format!("Add {noun}")];
+        if !list.is_empty() {
+            options.push(format!("Remove {noun}"));
+            options.push("Clear all".to_string());
+        }
+        options.push("Back to menu".to_string());
+
+        let pick = Select::new(&format!("{noun}s:",), options).prompt_skippable()?;
+        let Some(pick) = pick else { return Ok(()) };
+        if pick == format!("Add {noun}") {
+            if let Some(v) = Text::new(&format!("New {noun}:")).prompt_skippable()? {
+                let trimmed = v.trim();
+                if !trimmed.is_empty() {
+                    list.push(trimmed.to_string());
+                }
+            }
+        } else if pick == format!("Remove {noun}") {
+            let idx = Select::new("Remove which?", list.clone()).prompt_skippable()?;
+            if let Some(item) = idx {
+                list.retain(|c| c != &item);
+            }
+        } else if pick == "Clear all" {
+            list.clear();
+        } else {
+            return Ok(());
+        }
+    }
+}
+
+fn print_current_list(label: &str, items: &[String]) {
+    let current = if items.is_empty() {
+        "  (none)".to_string()
+    } else {
+        items
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("  {}. {}", i + 1, c))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    println!("\n{label}:\n{current}\n");
 }
 
 fn edit_languages(state: &mut WizardState, profiles: &ProfileManager) -> Result<(), WizardError> {
@@ -475,7 +694,11 @@ fn edit_languages(state: &mut WizardState, profiles: &ProfileManager) -> Result<
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.languages = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.languages = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -497,7 +720,11 @@ fn edit_must_use(state: &mut WizardState, profiles: &ProfileManager) -> Result<(
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.must_use = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.must_use = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -519,7 +746,11 @@ fn edit_must_avoid(state: &mut WizardState, profiles: &ProfileManager) -> Result
         .prompt_skippable()?;
     if let Some(v) = val {
         let trimmed = v.trim();
-        state.must_avoid = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+        state.must_avoid = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
@@ -553,40 +784,88 @@ fn edit_platforms(state: &mut WizardState, profiles: &ProfileManager) -> Result<
     Ok(())
 }
 
-fn edit_initial_task(state: &mut WizardState) -> Result<(), WizardError> {
-    let val = Text::new("First task to work on (optional):")
-        .with_default(state.initial_task.as_deref().unwrap_or(""))
+fn edit_harness(state: &mut WizardState) -> Result<(), WizardError> {
+    let options: Vec<String> = HARNESSES
+        .iter()
+        .map(|(_, key, desc)| format!("{key} — {desc}"))
+        .collect();
+    let cursor = HARNESSES
+        .iter()
+        .position(|(h, ..)| *h == state.harness)
+        .unwrap_or(0);
+    let pick = Select::new("Agent runtime (harness):", options)
+        .with_starting_cursor(cursor)
         .prompt_skippable()?;
-    if let Some(v) = val {
-        let trimmed = v.trim();
-        state.initial_task = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+    if let Some(pick) = pick {
+        if let Some((h, ..)) = HARNESSES
+            .iter()
+            .find(|(_, key, desc)| format!("{key} — {desc}") == pick)
+        {
+            state.harness = *h;
+        }
     }
     Ok(())
 }
 
-fn edit_context_budget(state: &mut WizardState) -> Result<(), WizardError> {
-    let cursor = BUDGETS
+fn edit_merge_mode(state: &mut WizardState) -> Result<(), WizardError> {
+    let options: Vec<String> = MERGE_MODES
         .iter()
-        .position(|b| *b == state.context_budget)
-        .unwrap_or(1);
-    let pick = Select::new(
-        "Context budget (drives LOG_ACTIVE_ENTRIES: small=3, medium=10, large=25):",
-        BUDGETS.iter().map(|s| (*s).to_string()).collect(),
-    )
-    .with_starting_cursor(cursor)
-    .prompt_skippable()?;
-    if let Some(v) = pick {
-        state.context_budget = v;
+        .map(|(_, key, desc)| format!("{key} — {desc}"))
+        .collect();
+    let cursor = MERGE_MODES
+        .iter()
+        .position(|(m, ..)| *m == state.merge_mode)
+        .unwrap_or(0);
+    let pick = Select::new("Merge mode:", options)
+        .with_starting_cursor(cursor)
+        .prompt_skippable()?;
+    if let Some(pick) = pick {
+        if let Some((m, ..)) = MERGE_MODES
+            .iter()
+            .find(|(_, key, desc)| format!("{key} — {desc}") == pick)
+        {
+            state.merge_mode = *m;
+        }
+    }
+    Ok(())
+}
+
+fn edit_work_branch(state: &mut WizardState) -> Result<(), WizardError> {
+    let val = Text::new("Long-lived work branch sprints develop on:")
+        .with_default(&state.work_branch)
+        .prompt_skippable()?;
+    if let Some(v) = val {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            state.work_branch = trimmed.to_string();
+        }
+    }
+    Ok(())
+}
+
+fn edit_sprint_zero_charter(state: &mut WizardState) -> Result<(), WizardError> {
+    let val = Text::new("What should Sprint 0 specifically research and build first?")
+        .with_default(state.sprint_zero_charter.as_deref().unwrap_or(""))
+        .prompt_skippable()?;
+    if let Some(v) = val {
+        let trimmed = v.trim();
+        state.sprint_zero_charter = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
     }
     Ok(())
 }
 
 fn show_preview(state: &WizardState, profiles: &ProfileManager) -> Result<(), WizardError> {
-    let rendered = render_llm_init(state, profiles)?;
+    let (spec_doc, prompt) = render_preview(state, profiles)?;
     println!();
-    println!("────────────────────── LLM_init.md preview ──────────────────────");
-    println!("{}", rendered);
-    println!("─────────────────────────────────────────────────────────────────");
+    println!("────────────────────── mission-spec.md preview ──────────────────────");
+    println!("{spec_doc}");
+    println!("────────────────────── launch-prompt.md preview ─────────────────────");
+    println!("{prompt}");
+    println!("────────────────────────────────────────────────────────────────────");
     println!();
     let _ = Text::new("Press Enter to return to the menu…")
         .with_default("")
@@ -594,86 +873,52 @@ fn show_preview(state: &WizardState, profiles: &ProfileManager) -> Result<(), Wi
     Ok(())
 }
 
-fn render_llm_init(
+fn render_preview(
     state: &WizardState,
     profiles: &ProfileManager,
-) -> Result<String, WizardError> {
-    let mut config = state.to_config();
-    if let Some(key) = &state.profile {
-        // Merge profile frameworks unconditionally (user doesn't type frameworks).
-        if let Ok(p) = profiles.get(key) {
-            if config.frameworks.is_empty() {
-                config.frameworks = p.frameworks.clone();
-            }
-        }
-    }
-    let engine = TemplateEngine::new();
-    let env = scaffold::detect_environment();
-    let mut ctx = RenderContext::new();
-    ctx.insert(
-        "project_name",
-        config.project_name.as_deref().unwrap_or("Untitled Project"),
-    );
-    ctx.insert("goal", config.goal.as_deref().unwrap_or("No goal specified."));
-    ctx.insert("created_date", &env.created_date);
-    ctx.insert("success_criteria", &config.success_criteria);
-    ctx.insert("frameworks", &config.frameworks);
-    ctx.insert("platforms", &config.platforms);
-    ctx.insert(
-        "context_budget",
-        config.context_budget.as_deref().unwrap_or("medium"),
-    );
-    if let Some(v) = &config.repo_url {
-        ctx.insert("repo_url", v);
-    }
-    if let Some(v) = &config.local_path {
-        ctx.insert("local_path", v);
-    }
-    if let Some(v) = &config.languages {
-        ctx.insert("languages", v);
-    }
-    if let Some(v) = &config.must_use {
-        ctx.insert("must_use", v);
-    }
-    if let Some(v) = &config.must_avoid {
-        ctx.insert("must_avoid", v);
-    }
-    if let Some(v) = &config.context {
-        ctx.insert("context", v);
-    }
-    if let Some(v) = &config.initial_task {
-        ctx.insert("initial_task", v);
-    }
-    Ok(engine.render("llm_init", &ctx)?)
+) -> Result<(String, String), WizardError> {
+    let created = today();
+    let spec = state.to_spec(profiles, &created);
+    let backlog_seeds: Vec<BacklogSeed> = scaffold::assign_backlog_ids(&spec.backlog_seeds, "");
+    let doc = scaffold::render_spec_document(&spec, &backlog_seeds)?;
+    let prompt = scaffold::render_prompt(&spec)?;
+    Ok((doc, prompt))
+}
+
+fn today() -> String {
+    scaffold::today()
 }
 
 fn save(
     state: &WizardState,
     profiles: &ProfileManager,
 ) -> Result<Option<WizardOutcome>, WizardError> {
-    // Minimum-viable check.
-    if state.project_name.as_deref().map(str::trim).unwrap_or("").is_empty() {
+    if state
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
         println!("  ⚠ Project name is empty — set it before saving.");
         let _ = Text::new("Press Enter to return to the menu…")
             .with_default("")
             .prompt_skippable()?;
         return Ok(None);
     }
-    if state.goal.as_deref().map(str::trim).unwrap_or("").is_empty() {
+    if state
+        .goal
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
         println!("  ⚠ Goal is empty — set it before saving.");
         let _ = Text::new("Press Enter to return to the menu…")
             .with_default("")
             .prompt_skippable()?;
         return Ok(None);
     }
-
-    let options = vec![
-        "Write LLM_init.md only".to_string(),
-        "Scaffold full GECK/ folder".to_string(),
-        "Back to menu".to_string(),
-    ];
-    let pick = Select::new("Save as:", options).prompt_skippable()?;
-    let Some(pick) = pick else { return Ok(None) };
 
     let default_dir = state
         .local_path
@@ -684,45 +929,38 @@ fn save(
                 .and_then(|p| p.to_str().map(str::to_string))
         })
         .unwrap_or_else(|| ".".to_string());
+    let path = Text::new("Launch into which project directory?")
+        .with_default(&default_dir)
+        .prompt_skippable()?;
+    let Some(path) = path else { return Ok(None) };
+    let pb = PathBuf::from(&path);
 
-    match pick.as_str() {
-        "Write LLM_init.md only" => {
-            let default_path = format!("{}/LLM_init.md", default_dir.trim_end_matches('/'));
-            let path = Text::new("Output path:")
-                .with_default(&default_path)
-                .prompt_skippable()?;
-            let Some(path) = path else { return Ok(None) };
-            let body = render_llm_init(state, profiles)?;
-            let pb = PathBuf::from(path);
-            if let Some(parent) = pb.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent)?;
-                }
-            }
-            std::fs::write(&pb, body)?;
-            println!("\n✓ wrote {}", pb.display());
-            Ok(Some(WizardOutcome::WroteLlmInit(pb)))
+    let created = today();
+    let spec = state.to_spec(profiles, &created);
+    spec::validate(&spec)?;
+
+    if state.seed {
+        let report = scaffold::launch_project(&pb, &spec)?;
+        println!("\n✓ wrote {}", report.spec_path.display());
+        println!("✓ wrote {}", report.prompt_path.display());
+        if report.seed.decisions_written {
+            println!("✓ seeded decisions.md (ADR-000)");
         }
-        "Scaffold full GECK/ folder" => {
-            let path = Text::new("Scaffold into which project directory?")
-                .with_default(&default_dir)
-                .prompt_skippable()?;
-            let Some(path) = path else { return Ok(None) };
-            let pb = PathBuf::from(&path);
-            let mut config = state.to_config();
-            if let Some(key) = &state.profile {
-                if let Ok(p) = profiles.get(key) {
-                    if config.frameworks.is_empty() {
-                        config.frameworks = p.frameworks.clone();
-                    }
-                }
-            }
-            let env = scaffold::detect_environment();
-            let geck = scaffold::init_geck_folder(&pb, &config, &env)?;
-            println!("\n✓ scaffolded {}", geck.display());
-            Ok(Some(WizardOutcome::Scaffolded(geck)))
+        for s in &report.seed.backlog_written {
+            println!("✓ seeded agent-tasks.md: T-{} {}", s.id, s.description);
         }
-        _ => Ok(None),
+        if report.seed.confidence_written {
+            println!("✓ seeded confidence.txt (1.0)");
+        }
+        Ok(Some(WizardOutcome::Launched(report.spec_path)))
+    } else {
+        std::fs::create_dir_all(&pb)?;
+        let backlog_seeds: Vec<BacklogSeed> = scaffold::assign_backlog_ids(&spec.backlog_seeds, "");
+        let spec_path = scaffold::write_spec(&pb, &spec, &backlog_seeds)?;
+        let prompt_path = scaffold::write_prompt(&pb, &spec)?;
+        println!("\n✓ wrote {}", spec_path.display());
+        println!("✓ wrote {} (seeding skipped)", prompt_path.display());
+        Ok(Some(WizardOutcome::Launched(spec_path)))
     }
 }
 
@@ -741,10 +979,10 @@ pub enum WizardError {
     Prompt(#[from] inquire::InquireError),
     #[error("profile error: {0}")]
     Profile(#[from] geck_core::profiles::ProfileError),
-    #[error("template error: {0}")]
-    Template(#[from] geck_core::templates::TemplateError),
     #[error("scaffold error: {0}")]
     Scaffold(#[from] geck_core::scaffold::ScaffoldError),
+    #[error("validation error: {0}")]
+    Validation(#[from] geck_core::spec::ValidationError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

@@ -1,33 +1,32 @@
-//! geck-core — shared library for GECK protocol v1.3 tooling.
+//! geck-core — shared library for the GECK Sprint Zero launcher.
 //!
-//! Module layout (modules are stubs in Phase 1; filled in subsequent phases):
-//! - [`tasks`]: typed task records (`TASK-NNN`).
-//! - [`log_index`]: JSONL log-index records.
-//! - [`decisions`] / [`learnings`]: per-record artifacts with YAML frontmatter.
-//! - [`templates`]: embedded v1.3 templates rendered via Tera.
-//! - [`profiles`]: profile registry mirrored from the Python reference impl.
-//! - [`scaffold`]: GECK folder initialization.
-//! - [`validate`]: config validation.
+//! GECK generates the two artifacts that start an Animus Sprint Loop with
+//! full context: a durable `mission-spec.md` (the drift baseline every
+//! sprint compares against) and the `launch-prompt.md` that wires it into
+//! the loop.
+//!
+//! Module layout:
+//! - [`spec`]: the [`spec::MissionSpec`] model, frontmatter round-trip, and validation.
+//! - [`frontmatter`]: generic YAML-frontmatter split/join helpers.
+//! - [`templates`]: embedded templates (spec, prompt, seeds) rendered via Tera.
+//! - [`profiles`]: profile registry (languages/frameworks/criteria presets).
+//! - [`scaffold`]: writes `mission-spec.md` + `launch-prompt.md` and seeds the project.
 
-pub mod tasks;
-pub mod log_index;
-pub mod decisions;
-pub mod learnings;
 pub mod frontmatter;
-pub mod templates;
 pub mod profiles;
 pub mod scaffold;
-pub mod validate;
+pub mod spec;
+pub mod templates;
 
-/// GECK protocol version this library targets.
-pub const PROTOCOL_VERSION: &str = "1.3";
+/// Mission-spec format version this library targets.
+pub const SPEC_VERSION: &str = "2.0";
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn protocol_version_is_v13() {
-        assert_eq!(PROTOCOL_VERSION, "1.3");
+    fn spec_version_is_2_0() {
+        assert_eq!(SPEC_VERSION, "2.0");
     }
 }

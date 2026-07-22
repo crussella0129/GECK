@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Core library for the GECK protocol: parsers, templates, scaffold, validation"
+description = "Core library for the GECK Sprint Zero launcher: mission-spec model, templates, scaffolding"
 
 [dependencies]
 serde.workspace = true

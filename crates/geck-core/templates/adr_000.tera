@@ -1,0 +1,5 @@
+## {{ date }} — Mission spec adopted: mission-spec.md is the drift baseline (sprint 0)
+- **Context:** Project launched via the GECK Sprint Zero launcher.
+- **Decision:** `mission-spec.md` at the project root is the authoritative mission document. Research Phases re-read it and report drift.
+- **Alternatives considered:** Goal-in-prompt only — rejected: not durable, lost after the launch session ends.
+- **Consequences:** Every sprint's decisions-reviewed gate re-surfaces the mission. Spec amendments are human-only (see mission-spec.md's Amendment Protocol).

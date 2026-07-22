@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command-line interface for the GECK protocol toolchain"
+description = "Sprint Zero launcher CLI for Animus Sprint Loops"
 
 [[bin]]
 name = "geck"

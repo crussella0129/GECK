@@ -30,7 +30,9 @@ pub enum FrontmatterError {
 /// on its own line. The body is returned verbatim, with a single leading
 /// newline stripped if present.
 pub fn split(input: &str) -> Result<(&str, &str), FrontmatterError> {
-    let rest = input.strip_prefix("---\n").ok_or(FrontmatterError::MissingOpen)?;
+    let rest = input
+        .strip_prefix("---\n")
+        .ok_or(FrontmatterError::MissingOpen)?;
     let close = find_closing(rest).ok_or(FrontmatterError::MissingClose)?;
     let yaml = &rest[..close];
     let after = &rest[close..];
@@ -76,7 +78,10 @@ mod tests {
 
     #[test]
     fn errors_on_missing_open() {
-        assert!(matches!(split("id: x\n").unwrap_err(), FrontmatterError::MissingOpen));
+        assert!(matches!(
+            split("id: x\n").unwrap_err(),
+            FrontmatterError::MissingOpen
+        ));
     }
 
     #[test]

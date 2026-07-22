@@ -1,0 +1,10 @@
+# Templates are embedded verbatim via include_str! and rendered output is
+# asserted against literal LF in tests — a Windows CRLF checkout would
+# corrupt that text and any diffs the templates produce. Keep source and
+# text files LF everywhere for the same reason.
+*.tera text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf

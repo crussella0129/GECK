@@ -1,37 +1,21 @@
-//! Embedded GECK v1.3 templates, rendered via Tera.
+//! Embedded launcher templates, rendered via Tera.
 //!
-//! Mirrors the Python `TemplateEngine` surface: nine built-in templates plus
-//! user-supplied custom templates registered by name.
+//! Four built-in templates: the mission spec body, the launch prompt, and
+//! the two seeding snippets (ADR-000, a backlog-seed line) appended into an
+//! Animus Sprint Loops project.
 
-use std::collections::HashMap;
-
-use tera::{Context, Tera, Value};
+use tera::{Context, Tera};
 use thiserror::Error;
 
 pub use tera::Context as RenderContext;
 
-/// Canonical names of the nine GECK v1.3 templates.
-pub const BUILTIN_NAMES: &[&str] = &[
-    "llm_init",
-    "geck_inst",
-    "env",
-    "tasks",
-    "log",
-    "log_index",
-    "decisions_index",
-    "learnings_index",
-    "repor",
-];
+/// Canonical names of the four built-in templates.
+pub const BUILTIN_NAMES: &[&str] = &["mission_spec", "launch_prompt", "adr_000", "backlog_seed"];
 
-const LLM_INIT: &str = include_str!("../templates/llm_init.tera");
-const GECK_INST: &str = include_str!("../templates/geck_inst.tera");
-const ENV: &str = include_str!("../templates/env.tera");
-const TASKS: &str = include_str!("../templates/tasks.tera");
-const LOG: &str = include_str!("../templates/log.tera");
-const LOG_INDEX: &str = include_str!("../templates/log_index.tera");
-const DECISIONS_INDEX: &str = include_str!("../templates/decisions_index.tera");
-const LEARNINGS_INDEX: &str = include_str!("../templates/learnings_index.tera");
-const REPOR: &str = include_str!("../templates/repor.tera");
+const MISSION_SPEC: &str = include_str!("../templates/mission_spec.tera");
+const LAUNCH_PROMPT: &str = include_str!("../templates/launch_prompt.tera");
+const ADR_000: &str = include_str!("../templates/adr_000.tera");
+const BACKLOG_SEED: &str = include_str!("../templates/backlog_seed.tera");
 
 #[derive(Debug, Error)]
 pub enum TemplateError {
@@ -58,7 +42,6 @@ pub struct TemplateEngine {
 impl TemplateEngine {
     pub fn new() -> Self {
         let mut tera = Tera::default();
-        tera.register_filter("zfill", zfill_filter);
         for (name, body) in Self::builtins() {
             tera.add_raw_template(name, body)
                 .expect("bundled template must parse");
@@ -66,17 +49,12 @@ impl TemplateEngine {
         Self { tera }
     }
 
-    fn builtins() -> [(&'static str, &'static str); 9] {
+    fn builtins() -> [(&'static str, &'static str); 4] {
         [
-            ("llm_init", LLM_INIT),
-            ("geck_inst", GECK_INST),
-            ("env", ENV),
-            ("tasks", TASKS),
-            ("log", LOG),
-            ("log_index", LOG_INDEX),
-            ("decisions_index", DECISIONS_INDEX),
-            ("learnings_index", LEARNINGS_INDEX),
-            ("repor", REPOR),
+            ("mission_spec", MISSION_SPEC),
+            ("launch_prompt", LAUNCH_PROMPT),
+            ("adr_000", ADR_000),
+            ("backlog_seed", BACKLOG_SEED),
         ]
     }
 
@@ -116,25 +94,12 @@ impl Default for TemplateEngine {
     }
 }
 
-/// `{{ n | zfill(width=3) }}` — pads an integer to `width` chars with leading zeros.
-fn zfill_filter(value: &Value, args: &HashMap<String, Value>) -> tera::Result<Value> {
-    let n = value
-        .as_i64()
-        .or_else(|| value.as_u64().map(|x| x as i64))
-        .ok_or_else(|| tera::Error::msg(format!("zfill: expected integer, got {value:?}")))?;
-    let width = args
-        .get("width")
-        .and_then(Value::as_u64)
-        .unwrap_or(3) as usize;
-    Ok(Value::String(format!("{n:0>width$}")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn engine_registers_all_nine_builtins() {
+    fn engine_registers_all_four_builtins() {
         let engine = TemplateEngine::new();
         let names = engine.list_templates();
         for &n in BUILTIN_NAMES {
@@ -150,139 +115,91 @@ mod tests {
     }
 
     #[test]
-    fn static_index_templates_render() {
+    fn adr_000_renders_with_date() {
         let engine = TemplateEngine::new();
         let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-
-        let dec = engine.render("decisions_index", &ctx).unwrap();
-        assert!(dec.starts_with("# Decisions — Demo"));
-        assert!(dec.contains("(no decisions yet)"));
-
-        let lrn = engine.render("learnings_index", &ctx).unwrap();
-        assert!(lrn.starts_with("# Learnings — Demo"));
-        assert!(lrn.contains("(no learnings yet)"));
+        ctx.insert("date", "2026-07-21");
+        let out = engine.render("adr_000", &ctx).unwrap();
+        assert!(out.starts_with("## 2026-07-21 — Mission spec adopted"));
+        assert!(out.contains("(sprint 0)"));
     }
 
     #[test]
-    fn log_index_emits_valid_jsonl() {
+    fn backlog_seed_renders_with_id_and_description() {
         let engine = TemplateEngine::new();
         let mut ctx = Context::new();
-        ctx.insert("timestamp", "2026-04-18T00:00:00");
-        let rendered = engine.render("log_index", &ctx).unwrap();
-        let line = rendered.trim_end();
-        let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
-        assert_eq!(parsed["id"], 0);
-        assert_eq!(parsed["state"], "WAIT");
-        assert_eq!(parsed["ts"], "2026-04-18T00:00:00");
-        assert_eq!(parsed["files"], serde_json::json!(["GECK/*"]));
-    }
-
-    #[test]
-    fn log_renders_entry_zero() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("timestamp", "2026-04-18 00:00:00");
-        let out = engine.render("log", &ctx).unwrap();
-        assert!(out.contains("# Session Log — Demo"));
-        assert!(out.contains("## Entry #0 — 2026-04-18 00:00:00 — touched: (init)"));
-        assert!(out.contains("- State: WAIT"));
-    }
-
-    #[test]
-    fn tasks_uses_zfill_for_task_ids() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("timestamp", "2026-04-18 00:00:00");
-        ctx.insert("initial_tasks", &vec!["first", "second"]);
-        let out = engine.render("tasks", &ctx).unwrap();
-        assert!(out.contains("- [ ] TASK-001 | TYPE: feature | SCOPE: medium | OWNER: agent"));
-        assert!(out.contains("- [ ] TASK-002 | TYPE: feature | SCOPE: medium | OWNER: agent"));
-        assert!(out.contains("  - first"));
-        assert!(out.contains("  - second"));
-    }
-
-    #[test]
-    fn tasks_falls_back_to_default_task() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("timestamp", "2026-04-18 00:00:00");
-        ctx.insert("initial_tasks", &Vec::<String>::new());
-        let out = engine.render("tasks", &ctx).unwrap();
-        assert!(out.contains("TASK-001 | TYPE: feature | SCOPE: medium | OWNER: agent"));
-        assert!(out.contains("Review project goals and begin implementation"));
-    }
-
-    #[test]
-    fn llm_init_defaults_fill_missing_fields() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("created_date", "2026-04-18");
-        ctx.insert("goal", "Ship it");
-        ctx.insert("success_criteria", &vec!["passes tests"]);
-        let out = engine.render("llm_init", &ctx).unwrap();
-        assert!(out.contains("# Project: Demo"));
-        assert!(out.contains("**Repository:** Not specified"));
-        assert!(out.contains("**Context Budget:** medium"));
-        assert!(out.contains("- [ ] passes tests"));
-        assert!(out.contains("- **Frameworks:** Not specified"));
-    }
-
-    #[test]
-    fn llm_init_uses_git_branch_when_provided() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("created_date", "2026-04-18");
-        ctx.insert("goal", "x");
-        ctx.insert("success_criteria", &Vec::<String>::new());
-        ctx.insert("git_branch", "feat/rust-port");
-        let out = engine.render("llm_init", &ctx).unwrap();
-        assert!(out.contains("**Branch:** feat/rust-port"));
-    }
-
-    #[test]
-    fn env_renders_runtime_table_and_platforms() {
-        let engine = TemplateEngine::new();
-        let mut ctx = Context::new();
-        ctx.insert("project_name", "Demo");
-        ctx.insert("timestamp", "2026-04-18 00:00:00");
-        ctx.insert("os_info", "Linux 6.8");
-        ctx.insert("shell_info", "bash");
-        let mut runtimes: std::collections::BTreeMap<&str, &str> =
-            std::collections::BTreeMap::new();
-        runtimes.insert("Rust", "1.75");
-        ctx.insert("runtime_versions", &runtimes);
-        ctx.insert(
-            "all_platforms",
-            &vec!["Windows", "macOS", "Linux"],
+        ctx.insert("id", "101");
+        ctx.insert("description", "wire up the thing");
+        let out = engine.render("backlog_seed", &ctx).unwrap();
+        assert_eq!(
+            out.trim_end(),
+            "- [ ] T-101 (backlog): wire up the thing — touches: TBD (identified during research)"
         );
-        ctx.insert("target_platforms", &vec!["Linux"]);
-        let out = engine.render("env", &ctx).unwrap();
-        assert!(out.contains("| Rust | 1.75 |"));
-        assert!(out.contains("- [ ] Windows"));
-        assert!(out.contains("- [ ] macOS"));
-        assert!(out.contains("- [x] Linux"));
     }
 
     #[test]
-    fn geck_inst_is_static_and_contains_protocol_marker() {
+    fn mission_spec_renders_required_sections() {
         let engine = TemplateEngine::new();
-        let out = engine.render("geck_inst", &Context::new()).unwrap();
-        assert!(out.contains("**Protocol Version:** 1.3"));
-        assert!(out.contains("## On Session Start"));
+        let mut ctx = Context::new();
+        ctx.insert("project_name", "Demo");
+        ctx.insert("goal", "Ship it.");
+        ctx.insert("success_criteria", &vec!["passes tests"]);
+        ctx.insert("non_goals", &Vec::<String>::new());
+        ctx.insert("languages", &Option::<String>::None);
+        ctx.insert("frameworks", &Vec::<String>::new());
+        ctx.insert("platforms", &vec!["Linux"]);
+        ctx.insert("must_use", &Option::<String>::None);
+        ctx.insert("must_avoid", &Option::<String>::None);
+        ctx.insert("merge_mode", "approve");
+        ctx.insert("work_branch", "dev");
+        ctx.insert("working_agreement_notes", &Vec::<String>::new());
+        ctx.insert("sprint_zero_charter", "Research X.");
+        ctx.insert("backlog_seeds", &vec!["T-101 (backlog): wire up Y"]);
+        let out = engine.render("mission_spec", &ctx).unwrap();
+        assert!(out.contains("# Mission: Demo"));
+        assert!(out.contains("## Goal\n\nShip it."));
+        assert!(out.contains("- [ ] passes tests"));
+        assert!(out.contains("(none declared)"));
+        assert!(out.contains("**Merge mode:** approve"));
+        assert!(out.contains("T-101 (backlog): wire up Y"));
+        assert!(out.contains("## Amendment Protocol"));
+    }
+
+    #[test]
+    fn launch_prompt_renders_claude_code_variant() {
+        let engine = TemplateEngine::new();
+        let mut ctx = Context::new();
+        ctx.insert("project_name", "Demo");
+        ctx.insert("harness", "claude-code");
+        ctx.insert("goal_summary", "Ship the thing");
+        ctx.insert("work_branch", "dev");
+        ctx.insert("merge_mode", "approve");
+        ctx.insert("sprint_loops_ref", "2026-07-21");
+        let out = engine.render("launch_prompt", &ctx).unwrap();
+        assert!(out.contains("/plugin marketplace add crussella0129/sprint-loops"));
+        assert!(out.contains("/sprint-loop start \"Ship the thing"));
+        assert!(out.contains("Establish the work branch"));
+    }
+
+    #[test]
+    fn launch_prompt_renders_codex_cli_variant() {
+        let engine = TemplateEngine::new();
+        let mut ctx = Context::new();
+        ctx.insert("project_name", "Demo");
+        ctx.insert("harness", "codex-cli");
+        ctx.insert("goal_summary", "Ship the thing");
+        ctx.insert("work_branch", "dev");
+        ctx.insert("merge_mode", "auto");
+        ctx.insert("sprint_loops_ref", "2026-07-21");
+        let out = engine.render("launch_prompt", &ctx).unwrap();
+        assert!(out.contains("cp -r codex-cli/skills/sprint-loops"));
+        assert!(!out.contains("/plugin marketplace"));
     }
 
     #[test]
     fn custom_template_override() {
         let mut engine = TemplateEngine::new();
-        engine
-            .add_template("custom", "hello {{ who }}")
-            .unwrap();
+        engine.add_template("custom", "hello {{ who }}").unwrap();
         let mut ctx = Context::new();
         ctx.insert("who", "world");
         assert_eq!(engine.render("custom", &ctx).unwrap(), "hello world");

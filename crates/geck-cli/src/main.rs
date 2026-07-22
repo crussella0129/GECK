@@ -1,4 +1,9 @@
-//! `geck` — CLI front-end for the GECK protocol toolchain.
+//! `geck` — Sprint Zero launcher for Animus Sprint Loops.
+//!
+//! Generates `mission-spec.md` (the durable mission document — the drift
+//! baseline every sprint compares against) and `launch-prompt.md` (the
+//! complete prompt that starts Sprint 0 with full context), and seeds the
+//! target project's `decisions.md` / `agent-tasks/` / `confidence.txt`.
 
 mod wizard;
 
@@ -8,15 +13,16 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use geck_core::profiles::ProfileManager;
-use geck_core::scaffold::{self, InitConfig};
-use geck_core::templates::{RenderContext, TemplateEngine, BUILTIN_NAMES};
+use geck_core::scaffold::{self, BacklogSeed};
+use geck_core::spec::{self, Harness, MergeMode, MissionSpec, SpecFrontmatter};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "geck",
     version,
-    about = "GECK protocol toolchain (v1.3)",
-    long_about = "Generate and manage GECK projects. Targets protocol version v1.3."
+    about = "Sprint Zero launcher for Animus Sprint Loops",
+    long_about = "Generate mission-spec.md + launch-prompt.md and seed a project so \
+                  Sprint 0 starts with full mission context. Targets spec format v2.0."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -25,8 +31,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Print the GECK protocol version this binary targets.
-    ProtocolVersion,
+    /// Print the mission-spec format version this binary targets.
+    SpecVersion,
 
     /// List all built-in profiles.
     ListProfiles {
@@ -35,29 +41,30 @@ enum Commands {
         json: bool,
     },
 
-    /// List all built-in templates.
-    ListTemplates,
+    /// Write mission-spec.md + launch-prompt.md and seed the project, or
+    /// launch the interactive wizard when called with no other arguments.
+    Launch(Box<LaunchArgs>),
 
-    /// Render an LLM_init.md from flags to stdout, or launch the interactive
-    /// wizard when called with no other arguments.
-    Generate(GenerateArgs),
-
-    /// Scaffold a full GECK/ folder in the given project directory.
-    Init(InitArgs),
+    /// Re-render launch-prompt.md from an existing mission-spec.md.
+    Prompt(PromptArgs),
 }
 
 #[derive(clap::Args, Debug)]
-struct GenerateArgs {
+struct LaunchArgs {
+    /// Project root to write into. Defaults to the current directory.
+    #[arg(long, value_name = "PATH", default_value = ".")]
+    path: PathBuf,
+
     /// Project name. Omit together with `--goal` to launch the wizard.
     #[arg(long)]
     project_name: Option<String>,
 
-    /// One-line goal for the project. Omit together with `--project-name` to
-    /// launch the wizard.
+    /// The mission goal, in full — not a one-liner. Omit together with
+    /// `--project-name` to launch the wizard.
     #[arg(long)]
     goal: Option<String>,
 
-    /// Preset profile to merge into the config (e.g. `cli_tool`).
+    /// Preset profile to merge into the spec (e.g. `cli_tool`).
     #[arg(long)]
     profile: Option<String>,
 
@@ -65,13 +72,9 @@ struct GenerateArgs {
     #[arg(long = "criterion", value_name = "TEXT")]
     criteria: Vec<String>,
 
-    /// Repeatable framework.
-    #[arg(long = "framework", value_name = "NAME")]
-    frameworks: Vec<String>,
-
-    /// Repeatable target platform.
-    #[arg(long = "platform", value_name = "NAME")]
-    platforms: Vec<String>,
+    /// Repeatable non-goal (the anti-drift fence).
+    #[arg(long = "non-goal", value_name = "TEXT")]
+    non_goals: Vec<String>,
 
     /// Free-text languages list.
     #[arg(long)]
@@ -85,57 +88,64 @@ struct GenerateArgs {
     #[arg(long)]
     must_avoid: Option<String>,
 
-    /// Context budget: small | medium | large.
-    #[arg(long, default_value = "medium")]
-    context_budget: String,
-
-    /// Write to this path instead of stdout.
-    #[arg(long, value_name = "PATH")]
-    output: Option<PathBuf>,
-}
-
-#[derive(clap::Args, Debug)]
-struct InitArgs {
-    /// Project root (the folder that will get a `GECK/` subfolder).
-    #[arg(value_name = "PROJECT_PATH")]
-    path: PathBuf,
-
-    /// Project name.
-    #[arg(long)]
-    project_name: String,
-
-    /// One-line goal for the project.
-    #[arg(long)]
-    goal: String,
-
-    /// Preset profile to merge in.
-    #[arg(long)]
-    profile: Option<String>,
-
-    #[arg(long = "criterion", value_name = "TEXT")]
-    criteria: Vec<String>,
-
-    #[arg(long = "framework", value_name = "NAME")]
-    frameworks: Vec<String>,
-
+    /// Repeatable target platform.
     #[arg(long = "platform", value_name = "NAME")]
     platforms: Vec<String>,
 
+    /// Agent runtime the launch prompt targets.
+    #[arg(long, default_value = "claude-code")]
+    harness: String,
+
+    /// approve (human approves each sprint's PR) or auto (merge on green CI).
+    #[arg(long, default_value = "approve")]
+    merge_mode: String,
+
+    /// Long-lived work branch sprints develop on.
+    #[arg(long, default_value = "dev")]
+    work_branch: String,
+
+    /// What Sprint 0 specifically should research and build first.
+    #[arg(long, default_value = "")]
+    charter: String,
+
+    /// Repeatable backlog seed (written as T-1xx (backlog) entries).
+    #[arg(long = "backlog-seed", value_name = "TEXT")]
+    backlog_seeds: Vec<String>,
+
+    /// Skip seeding decisions.md / agent-tasks/ / confidence.txt.
     #[arg(long)]
-    context_budget: Option<String>,
+    no_seed: bool,
+
+    /// Print both artifacts to stdout instead of writing them to disk.
+    #[arg(long)]
+    stdout_only: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct PromptArgs {
+    /// Project root containing mission-spec.md. Defaults to the current directory.
+    #[arg(long, value_name = "PATH", default_value = ".")]
+    path: PathBuf,
+
+    /// Override the harness recorded in mission-spec.md's frontmatter.
+    #[arg(long)]
+    harness: Option<String>,
+
+    /// Write to this path instead of project-root/launch-prompt.md.
+    #[arg(long, value_name = "PATH")]
+    output: Option<PathBuf>,
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Some(Commands::ProtocolVersion) => {
-            println!("{}", geck_core::PROTOCOL_VERSION);
+        Some(Commands::SpecVersion) => {
+            println!("{}", geck_core::SPEC_VERSION);
             ExitCode::SUCCESS
         }
         Some(Commands::ListProfiles { json }) => run_list_profiles(json),
-        Some(Commands::ListTemplates) => run_list_templates(),
-        Some(Commands::Generate(args)) => run_generate(args),
-        Some(Commands::Init(args)) => run_init(args),
+        Some(Commands::Launch(args)) => run_launch(*args),
+        Some(Commands::Prompt(args)) => run_prompt(args),
         None => {
             use clap::CommandFactory;
             let _ = Cli::command().print_help();
@@ -162,26 +172,21 @@ fn run_list_profiles(as_json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run_list_templates() -> ExitCode {
-    for name in BUILTIN_NAMES {
-        println!("{name}");
-    }
-    ExitCode::SUCCESS
-}
-
-fn run_generate(args: GenerateArgs) -> ExitCode {
-    // If neither project-name nor goal was supplied, launch the wizard.
-    // Any non-default arg forces the non-interactive path and errors if
-    // project-name/goal are still missing.
+fn run_launch(args: LaunchArgs) -> ExitCode {
     let has_other_args = args.profile.is_some()
         || !args.criteria.is_empty()
-        || !args.frameworks.is_empty()
-        || !args.platforms.is_empty()
+        || !args.non_goals.is_empty()
         || args.languages.is_some()
         || args.must_use.is_some()
         || args.must_avoid.is_some()
-        || args.context_budget != "medium"
-        || args.output.is_some();
+        || !args.platforms.is_empty()
+        || args.harness != "claude-code"
+        || args.merge_mode != "approve"
+        || args.work_branch != "dev"
+        || !args.charter.is_empty()
+        || !args.backlog_seeds.is_empty()
+        || args.no_seed
+        || args.stdout_only;
 
     if args.project_name.is_none() && args.goal.is_none() && !has_other_args {
         return match wizard::run() {
@@ -189,7 +194,10 @@ fn run_generate(args: GenerateArgs) -> ExitCode {
                 println!("wizard cancelled — nothing written");
                 ExitCode::SUCCESS
             }
-            Ok(_) => ExitCode::SUCCESS,
+            Ok(wizard::WizardOutcome::Launched(spec_path)) => {
+                println!("launched: {}", spec_path.display());
+                ExitCode::SUCCESS
+            }
             Err(e) => {
                 eprintln!("geck: {e}");
                 ExitCode::FAILURE
@@ -203,50 +211,118 @@ fn run_generate(args: GenerateArgs) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    let mut config = InitConfig {
-        project_name: Some(project_name),
-        goal: Some(goal),
+    let harness: Harness = match args.harness.parse() {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("geck: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let merge_mode: MergeMode = match args.merge_mode.parse() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("geck: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let env = scaffold::detect_environment(&args.path);
+    let mut spec = MissionSpec {
+        frontmatter: SpecFrontmatter {
+            geck: geck_core::SPEC_VERSION.to_string(),
+            project: project_name,
+            created: env.created_date.clone(),
+            profile: args.profile.clone(),
+            harness,
+            merge_mode,
+            work_branch: args.work_branch,
+            repo: env.git_remote.clone(),
+            sprint_loops_ref: Some(env.created_date.clone()),
+        },
+        goal,
         success_criteria: args.criteria,
-        frameworks: args.frameworks,
-        platforms: args.platforms,
+        non_goals: args.non_goals,
         languages: args.languages,
+        frameworks: Vec::new(),
+        platforms: args.platforms,
         must_use: args.must_use,
         must_avoid: args.must_avoid,
-        context_budget: Some(args.context_budget),
-        ..Default::default()
+        working_agreement_notes: Vec::new(),
+        sprint_zero_charter: args.charter,
+        backlog_seeds: args.backlog_seeds,
     };
 
     if let Some(profile) = &args.profile {
-        if let Err(e) = ProfileManager::new().apply(&mut config, profile) {
+        if let Err(e) = ProfileManager::new().apply(&mut spec, profile) {
             eprintln!("geck: {e}");
             return ExitCode::FAILURE;
         }
     }
 
-    let env = scaffold::detect_environment();
-    let engine = TemplateEngine::new();
-    let mut ctx = RenderContext::new();
-    ctx.insert("project_name", config.project_name.as_deref().unwrap_or(""));
-    ctx.insert("goal", config.goal.as_deref().unwrap_or(""));
-    ctx.insert("created_date", &env.created_date);
-    ctx.insert("success_criteria", &config.success_criteria);
-    ctx.insert("frameworks", &config.frameworks);
-    ctx.insert("platforms", &config.platforms);
-    ctx.insert(
-        "context_budget",
-        config.context_budget.as_deref().unwrap_or("medium"),
-    );
-    if let Some(v) = &config.languages {
-        ctx.insert("languages", v);
-    }
-    if let Some(v) = &config.must_use {
-        ctx.insert("must_use", v);
-    }
-    if let Some(v) = &config.must_avoid {
-        ctx.insert("must_avoid", v);
+    if let Err(e) = spec::validate(&spec) {
+        eprintln!("geck: {e}");
+        return ExitCode::FAILURE;
     }
 
-    let rendered = match engine.render("llm_init", &ctx) {
+    if args.stdout_only {
+        let backlog_seeds: Vec<BacklogSeed> = scaffold::assign_backlog_ids(&spec.backlog_seeds, "");
+        match (
+            scaffold::render_spec_document(&spec, &backlog_seeds),
+            scaffold::render_prompt(&spec),
+        ) {
+            (Ok(spec_doc), Ok(prompt)) => {
+                println!("{spec_doc}\n---\n{prompt}");
+                ExitCode::SUCCESS
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                eprintln!("geck: {e}");
+                ExitCode::FAILURE
+            }
+        }
+    } else {
+        match scaffold::launch_project(&args.path, &spec) {
+            Ok(report) => {
+                print_launch_report(&report);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("geck: {e}");
+                ExitCode::FAILURE
+            }
+        }
+    }
+}
+
+fn print_launch_report(report: &geck_core::scaffold::LaunchReport) {
+    println!("wrote {}", report.spec_path.display());
+    println!("wrote {}", report.prompt_path.display());
+    if report.seed.decisions_written {
+        println!("seeded decisions.md (ADR-000)");
+    } else {
+        println!("decisions.md already has ADR-000 — skipped");
+    }
+    for seed in &report.seed.backlog_written {
+        println!("seeded agent-tasks.md: T-{} {}", seed.id, seed.description);
+    }
+    for seed in &report.seed.backlog_skipped {
+        println!("agent-tasks.md already has T-{} — skipped", seed.id);
+    }
+    if report.seed.confidence_written {
+        println!("seeded confidence.txt (1.0)");
+    }
+}
+
+fn run_prompt(args: PromptArgs) -> ExitCode {
+    let spec_path = args.path.join("mission-spec.md");
+    let document = match std::fs::read_to_string(&spec_path) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("geck: failed to read {}: {e}", spec_path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut source = match spec::load_for_prompt(&document) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("geck: {e}");
@@ -254,52 +330,41 @@ fn run_generate(args: GenerateArgs) -> ExitCode {
         }
     };
 
-    if let Some(path) = args.output {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    eprintln!("geck: failed to create {}: {e}", parent.display());
-                    return ExitCode::FAILURE;
-                }
+    if let Some(h) = &args.harness {
+        match h.parse::<Harness>() {
+            Ok(h) => source.frontmatter.harness = h,
+            Err(e) => {
+                eprintln!("geck: {e}");
+                return ExitCode::FAILURE;
             }
         }
-        if let Err(e) = std::fs::write(&path, rendered) {
-            eprintln!("geck: failed to write {}: {e}", path.display());
-            return ExitCode::FAILURE;
-        }
-    } else {
-        print!("{rendered}");
-    }
-    ExitCode::SUCCESS
-}
-
-fn run_init(args: InitArgs) -> ExitCode {
-    let mut config = InitConfig {
-        project_name: Some(args.project_name),
-        goal: Some(args.goal),
-        success_criteria: args.criteria,
-        frameworks: args.frameworks,
-        platforms: args.platforms,
-        context_budget: args.context_budget,
-        ..Default::default()
-    };
-
-    if let Some(profile) = &args.profile {
-        if let Err(e) = ProfileManager::new().apply(&mut config, profile) {
-            eprintln!("geck: {e}");
-            return ExitCode::FAILURE;
-        }
     }
 
-    let env = scaffold::detect_environment();
-    match scaffold::init_geck_folder(&args.path, &config, &env) {
-        Ok(p) => {
-            println!("{}", p.display());
-            ExitCode::SUCCESS
-        }
+    let rendered = match scaffold::render_prompt_from_frontmatter(&source.frontmatter, &source.goal)
+    {
+        Ok(r) => r,
         Err(e) => {
             eprintln!("geck: {e}");
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match args.output {
+        Some(path) => {
+            if let Err(e) = std::fs::write(&path, rendered) {
+                eprintln!("geck: failed to write {}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+            println!("wrote {}", path.display());
+        }
+        None => {
+            let out = args.path.join("launch-prompt.md");
+            if let Err(e) = std::fs::write(&out, &rendered) {
+                eprintln!("geck: failed to write {}: {e}", out.display());
+                return ExitCode::FAILURE;
+            }
+            println!("wrote {}", out.display());
         }
     }
+    ExitCode::SUCCESS
 }

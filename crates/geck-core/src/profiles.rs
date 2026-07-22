@@ -1,15 +1,13 @@
-//! Profile registry — port of `geck_generator/core/profiles.py`.
-//!
-//! Profile data ships as embedded JSON so Python and Rust share one source
-//! of truth. [`ProfileManager`] parses on construction and exposes lookups
-//! + merge-into-config semantics matching `apply_profile` in the Python impl.
+//! Profile registry — presets that seed a [`MissionSpec`]'s constraints and
+//! suggested success criteria for a common project shape (web app, CLI
+//! tool, data science, etc.).
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::scaffold::InitConfig;
+use crate::spec::MissionSpec;
 
 const PROFILES_JSON: &str = include_str!("../data/profiles.json");
 
@@ -43,21 +41,10 @@ pub struct Category {
     pub profiles: Vec<String>,
 }
 
-/// Exploration profile used by GECK Repor.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReporProfile {
-    pub name: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub goals: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct RawRegistry {
     profiles: BTreeMap<String, Profile>,
     categories: BTreeMap<String, Category>,
-    repor_profiles: BTreeMap<String, ReporProfile>,
 }
 
 #[derive(Debug, Error)]
@@ -71,7 +58,6 @@ pub enum ProfileError {
 pub struct ProfileManager {
     profiles: BTreeMap<String, Profile>,
     categories: BTreeMap<String, Category>,
-    repor: BTreeMap<String, ReporProfile>,
 }
 
 impl ProfileManager {
@@ -84,7 +70,6 @@ impl ProfileManager {
         Ok(Self {
             profiles: raw.profiles,
             categories: raw.categories,
-            repor: raw.repor_profiles,
         })
     }
 
@@ -109,31 +94,27 @@ impl ProfileManager {
         &self.categories
     }
 
-    pub fn repor_profiles(&self) -> &BTreeMap<String, ReporProfile> {
-        &self.repor
-    }
-
-    /// Merge a profile into a config. Profile values fill only missing fields —
-    /// explicit fields on `config` are preserved. Matches the Python semantics.
-    pub fn apply(&self, config: &mut InitConfig, profile_name: &str) -> Result<(), ProfileError> {
+    /// Merge a profile into a spec's constraints. Profile values fill only
+    /// missing fields — explicit fields on `spec` are preserved.
+    pub fn apply(&self, spec: &mut MissionSpec, profile_name: &str) -> Result<(), ProfileError> {
         let profile = self.get(profile_name)?;
-        if config.languages.is_none() {
-            config.languages = profile.languages.clone();
+        if spec.languages.is_none() {
+            spec.languages = profile.languages.clone();
         }
-        if config.frameworks.is_empty() {
-            config.frameworks = profile.frameworks.clone();
+        if spec.frameworks.is_empty() {
+            spec.frameworks = profile.frameworks.clone();
         }
-        if config.platforms.is_empty() {
-            config.platforms = profile.platforms.clone();
+        if spec.platforms.is_empty() {
+            spec.platforms = profile.platforms.clone();
         }
-        if config.success_criteria.is_empty() {
-            config.success_criteria = profile.suggested_criteria.clone();
+        if spec.success_criteria.is_empty() {
+            spec.success_criteria = profile.suggested_criteria.clone();
         }
-        if config.must_use.is_none() {
-            config.must_use = profile.suggested_must_use.clone();
+        if spec.must_use.is_none() {
+            spec.must_use = profile.suggested_must_use.clone();
         }
-        if config.must_avoid.is_none() {
-            config.must_avoid = profile.suggested_must_avoid.clone();
+        if spec.must_avoid.is_none() {
+            spec.must_avoid = profile.suggested_must_avoid.clone();
         }
         Ok(())
     }
@@ -148,6 +129,34 @@ impl Default for ProfileManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::spec::{Harness, MergeMode, SpecFrontmatter};
+
+    fn empty_spec() -> MissionSpec {
+        MissionSpec {
+            frontmatter: SpecFrontmatter {
+                geck: "2.0".into(),
+                project: "Demo".into(),
+                created: "2026-07-21".into(),
+                profile: None,
+                harness: Harness::ClaudeCode,
+                merge_mode: MergeMode::Approve,
+                work_branch: "dev".into(),
+                repo: None,
+                sprint_loops_ref: None,
+            },
+            goal: "x".into(),
+            success_criteria: vec![],
+            non_goals: vec![],
+            languages: None,
+            frameworks: vec![],
+            platforms: vec![],
+            must_use: None,
+            must_avoid: None,
+            working_agreement_notes: vec![],
+            sprint_zero_charter: String::new(),
+            backlog_seeds: vec![],
+        }
+    }
 
     #[test]
     fn bundled_registry_parses() {
@@ -155,41 +164,41 @@ mod tests {
         assert!(m.list().contains(&"website"));
         assert!(m.list().contains(&"cli_tool"));
         assert!(m.categories().contains_key("web"));
-        assert!(m.repor_profiles().contains_key("security_audit"));
     }
 
     #[test]
     fn unknown_profile_errors() {
         let m = ProfileManager::new();
-        assert!(matches!(m.get("not-a-real-profile"), Err(ProfileError::Unknown(_))));
+        assert!(matches!(
+            m.get("not-a-real-profile"),
+            Err(ProfileError::Unknown(_))
+        ));
     }
 
     #[test]
     fn apply_fills_missing_fields() {
         let m = ProfileManager::new();
-        let mut cfg = InitConfig::default();
-        m.apply(&mut cfg, "cli_tool").unwrap();
-        assert_eq!(cfg.languages.as_deref(), Some("Python 3.11+"));
-        assert!(!cfg.frameworks.is_empty());
-        assert!(cfg.platforms.contains(&"Linux".to_string()));
-        assert!(!cfg.success_criteria.is_empty());
-        assert!(cfg.must_use.is_some());
-        assert!(cfg.must_avoid.is_some());
+        let mut spec = empty_spec();
+        m.apply(&mut spec, "cli_tool").unwrap();
+        assert_eq!(spec.languages.as_deref(), Some("Python 3.11+"));
+        assert!(!spec.frameworks.is_empty());
+        assert!(spec.platforms.contains(&"Linux".to_string()));
+        assert!(!spec.success_criteria.is_empty());
+        assert!(spec.must_use.is_some());
+        assert!(spec.must_avoid.is_some());
     }
 
     #[test]
     fn apply_preserves_explicit_fields() {
         let m = ProfileManager::new();
-        let mut cfg = InitConfig {
-            languages: Some("Rust".into()),
-            frameworks: vec!["tokio".into()],
-            ..Default::default()
-        };
-        m.apply(&mut cfg, "cli_tool").unwrap();
-        assert_eq!(cfg.languages.as_deref(), Some("Rust"));
-        assert_eq!(cfg.frameworks, vec!["tokio".to_string()]);
+        let mut spec = empty_spec();
+        spec.languages = Some("Rust".into());
+        spec.frameworks = vec!["tokio".into()];
+        m.apply(&mut spec, "cli_tool").unwrap();
+        assert_eq!(spec.languages.as_deref(), Some("Rust"));
+        assert_eq!(spec.frameworks, vec!["tokio".to_string()]);
         // Empty fields still get filled from the profile
-        assert!(!cfg.success_criteria.is_empty());
+        assert!(!spec.success_criteria.is_empty());
     }
 
     #[test]
